@@ -1,0 +1,63 @@
+#include "@MODULE_NAME@.h"
+
+namespace gfsim {
+
+@MODULE_NAME@::@MODULE_NAME@(SimSystem* system)
+    : SimModule("@MODULE_NAME@", system) {}
+
+void @MODULE_NAME@::Build()
+{
+    SetObjectCapacity(0); // replace 0 with exact child-module + inner-queue count
+    // Own every physical queue here; bind each to one output and one input.
+    // Create optional child modules and inner queues before these calls.
+    BuildInnerQueues();
+    BuildChildren();
+}
+
+void @MODULE_NAME@::Work()
+{
+    // Atomic queue transfer pattern when ports exist:
+    // if (input_->Empty() || output_->Full()) return;
+    // auto result = PureTransform(input_->Front());
+    // output_->Write(std::move(result));
+    // input_->Pop(); // consume only after output write succeeds
+    // Modules with no ports can update local state directly.
+    // Small scalar token: output_->Write(input_->Front()); input_->Pop();
+    // Class source: auto packet = std::make_shared<Message>(...);
+    // Class later stage: peek input_->Front(), compute a PURE result,
+    // write output, then input_->Pop(). Mutate a forwarded packet only
+    // after its output Write succeeds.
+    // Call GetSim()->MarkProgress() only after a real operation fires.
+    UpdateState();
+    Log().Debug("@MODULE_NAME@", "work") << "work_cycles=" << state_.workCycles;
+    WorkChildren();
+}
+
+void @MODULE_NAME@::Xfer()
+{
+    // Optional phase-boundary bookkeeping goes before queue advancement.
+    AdvanceInnerQueues();
+    XferChildren();
+}
+
+void @MODULE_NAME@::Reset()
+{
+    state_ = State{};
+    ResetInnerQueues();
+    ResetChildren();
+}
+
+void @MODULE_NAME@::ReportStat()
+{
+    auto& report = Report();
+    report.ReportTitle("@MODULE_NAME@ Stats");
+    report.ReportVal("Work cycles", state_.workCycles);
+    ReportChildren();
+}
+
+void @MODULE_NAME@::UpdateState()
+{
+    state_.workCycles = NextCount(state_.workCycles);
+}
+
+} // namespace gfsim

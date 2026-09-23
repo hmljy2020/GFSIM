@@ -1,0 +1,34 @@
+#pragma once
+
+#include <cstdint>
+
+#include "SimModule.h"
+
+namespace gfsim {
+
+class @MODULE_NAME@ final : public SimModule {
+public:
+    explicit @MODULE_NAME@(SimSystem* system = nullptr);
+
+    void Build() override;
+    void Work() override;
+    void Xfer() override;
+    void Reset() override;
+    void ReportStat() override;
+
+    // Optional INPUT and OUTPUT SimQueue<T>* fields belong here.
+    // Arithmetic/enum T travels by value; class/struct T travels by shared_ptr<T>.
+    // Bind them with BindInput/BindOutput in the constructor.
+    // Optional child modules and INNER queues are owned through
+    // AddSubmodule/AddInnerQueue in Build().
+
+private:
+    struct State {
+        std::uint64_t workCycles = 0;
+    } state_;
+
+    PURE static std::uint64_t NextCount(std::uint64_t prior) { return prior + 1; }
+    void UpdateState();
+};
+
+} // namespace gfsim

@@ -1,0 +1,42 @@
+# @MODULE_NAME@
+
+## Purpose
+
+Describe the modeled behavior and what one `Work()` call represents.
+
+## Ports
+
+List only ports that exist. Remove either table when the module has no ports.
+
+| Input | Payload | Owner | When consumed |
+| --- | --- | --- | --- |
+
+| Output | Payload | Owner | When produced |
+| --- | --- | --- | --- |
+
+## Children and internal queues
+
+List child modules, owned `INNER` queues, and the data flow between them. State the exact `SetObjectCapacity()` count used in `Build()`. For every queue, name its single output producer and single input consumer. Note any intentional cycle.
+
+## State and cycle behavior
+
+List private state fields and their reset values. Describe the blocking checks before input consumption, local helper methods, `Work()` behavior, and `Xfer()` bookkeeping. Define the exact event that calls `MarkProgress()`, the completion condition that calls `RequestTerminate()`, and the chosen deadlock threshold.
+
+List every `PURE` method, its explicit inputs and output, and why it is independent of module state. State the complete transaction readiness condition and the commit order: peek, compute, write outputs, then pop inputs. Explain blocked-cycle behavior.
+
+Identify which queues carry scalar values and which carry `std::shared_ptr<Message>`. For pointer messages, name the allocation source and whether downstream modules only forward or intentionally mutate the object.
+
+## Log and report contract
+
+| Event or counter | Unit | Trigger or denominator |
+| --- | --- | --- |
+
+Use stable logger unit and stage names. Define whether a reported count means events, cycles, queue entries, or bytes. For percentages, name the denominator.
+
+## Trace contract
+
+List all owned queues and their payload formatters. Define any module duration slices or dependency flows, including their start/end cycle events. State whether every-cycle capture is required or an explicit sampling interval is acceptable.
+
+## Tests
+
+List tests for normal flow, blocked cycles, reset, hierarchy, and log/report output.
