@@ -1,4 +1,5 @@
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -122,8 +123,8 @@ private:
 
 class TransactionTop final : public gfsim::SimModule {
 public:
-    explicit TransactionTop(gfsim::SimSystem* system)
-        : SimModule("transaction_top", system) {}
+    TransactionTop(gfsim::SimSystem* system, bool consumerFirst)
+        : SimModule("transaction_top", system), consumerFirst_(consumerFirst) {}
 
     void Build() override
     {
@@ -135,9 +136,15 @@ public:
         source_ = std::make_shared<Source>(input_);
         transform_ = std::make_shared<Transform>(input_, output_);
         sink_ = std::make_shared<Sink>(output_);
-        AddSubmodule(source_);
-        AddSubmodule(transform_);
-        AddSubmodule(sink_);
+        if (consumerFirst_) {
+            AddSubmodule(sink_);
+            AddSubmodule(transform_);
+            AddSubmodule(source_);
+        } else {
+            AddSubmodule(source_);
+            AddSubmodule(transform_);
+            AddSubmodule(sink_);
+        }
         BuildInnerQueues();
         BuildChildren();
     }
@@ -153,6 +160,7 @@ public:
     const gfsim::SimQueue<Packet>& OutputQueue() const { return *output_; }
 
 private:
+    bool consumerFirst_;
     gfsim::SimQueue<Packet>* input_ = nullptr;
     gfsim::SimQueue<Packet>* output_ = nullptr;
     std::shared_ptr<Source> source_;
@@ -226,6 +234,10 @@ void TestAllPortsAdmitted()
 
     product.Pop();
     module.Work();
+    Check(module.Fires() == 0 && !first.Empty() && !second.Empty() && sum.WRBothEmpty(),
+          "a same-cycle pop must not grant a multi-port transaction");
+    product.Work(); // publish the free slot
+    module.Work();
     Check(module.Fires() == 1 && first.Empty() && second.Empty() &&
               sum.SizeW() == 1 && product.SizeW() == 1,
           "all outputs must be written before both inputs are consumed");
@@ -235,10 +247,39 @@ void TestAllPortsAdmitted()
           "PURE computation must produce the expected two results");
 }
 
-void TestAtomicFire()
+void TestWriteCapacity()
+{
+    gfsim::SimQueue<int> queue("capacity");
+    queue.InitMaxSize(3);
+    queue.Write(1);
+    queue.Work();
+    Check(queue.Read() == 1 && queue.Empty() && !queue.Full(1) && queue.Full(2),
+          "read must not enlarge this cycle's two-slot write budget");
+    queue.Write(2);
+    queue.Write(3);
+    Check(queue.Full() && queue.toBeOverflow(std::numeric_limits<uint32_t>::max()),
+          "staged writes must consume capacity and reservations must not wrap");
+    Check(queue.FlushIf([](int value) { return value == 2; }) == 1 && queue.Full(),
+          "flushing a staged entry releases its slot at the boundary");
+    bool rejected = false;
+    try {
+        queue.Write(4);
+    } catch (const gfsim::AssertionError&) {
+        rejected = true;
+    }
+    Check(rejected && queue.SizeW() == 1, "full write must fail without staging a packet");
+    queue.setStall();
+    queue.Work();
+    Check(queue.Empty() && queue.SizeW() == 1 && !queue.Full(1) && queue.Full(2),
+          "a stalled boundary must return freed slots without publishing data");
+    queue.Reset();
+    Check(queue.WRBothEmpty() && !queue.Full(2), "reset must restore all three slots");
+}
+
+void TestAtomicFire(bool consumerFirst)
 {
     gfsim::SimSys system;
-    auto top = std::make_shared<TransactionTop>(&system);
+    auto top = std::make_shared<TransactionTop>(&system, consumerFirst);
     system.AddModule(top);
     system.Build();
 
@@ -258,7 +299,7 @@ void TestAtomicFire()
     top->Consumer().SetBlocked(false);
     system.Step(); // sink frees output; transform still sees it full this cycle
     Check(top->Comb().Fires() == 1 && top->InputQueue().Size() == 1,
-          "consumer release later in Work must not make an earlier fire partial");
+          "a consumer release must not grant a transfer until the next cycle");
     system.Step(); // output Write succeeds, then input Pop commits
     Check(top->Comb().Fires() == 2 && top->InputQueue().Empty(),
           "successful output write must be followed by input consumption");
@@ -273,8 +314,10 @@ void TestAtomicFire()
 int main()
 {
     try {
+        TestWriteCapacity();
         TestAllPortsAdmitted();
-        TestAtomicFire();
+        TestAtomicFire(false);
+        TestAtomicFire(true);
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

@@ -17,7 +17,7 @@ Raw pointers and `SimQueue<std::shared_ptr<T>>` are rejected. A producer allocat
 | --- | --- |
 | `SimQueue(std::string name = "SimQueue")` / `Name()` | Construct and identify a queue. Give every physical link a descriptive name. |
 | `Build()` | No-op reserved for queue setup. |
-| `Work()` | Unless stalled, decrement pending delays and move ready entries from staged to visible storage. |
+| `Work()` | Publish freed slots for the next cycle, even when stalled. Unless stalled, also decrement delays and move ready entries to visible storage. |
 | `Xfer()` | No-op; the queue advances in `Work()`. Parent-owned inner queues are advanced by their parent in `Xfer()`. |
 | `Reset()` | Clear staged, visible, and delay state; release the stall. Capacity and latency remain. |
 | `Setlatency(cycles)` | Set delay for later writes; values 0 and 1 transfer on the next queue `Work()`. |
@@ -36,10 +36,12 @@ Raw pointers and `SimQueue<std::shared_ptr<T>>` are rejected. A producer allocat
 | `const T& Peek() const` | Inspect the scalar value or referenced class object through a const view suitable for `PURE` methods; do not retain the reference after pop/read/reset. |
 | `Pop()` | Remove the visible front without returning it. |
 | `Empty()` / `WRBothEmpty()` | Check visible storage only / both storage deques. |
-| `Full()` / `Full(reserve)` / `toBeOverflow(reserve)` | Check combined occupancy plus optional reservation. |
+| `Full()` / `Full(reserve)` / `toBeOverflow(reserve)` | Check the remaining write budget for this cycle. For `n` writes, require `!Full(n - 1)`. |
 | `Size()` / `SizeW()` / `MaxSize()` | Return visible count / staged count / configured capacity. |
 
-`GetRawWriteData()` and `GetRawReadData()` expose mutable `std::deque<Packet>&`; `GetRawDelayCycle()` exposes delay metadata. Direct mutation bypasses normal checks. `FlushIf`, `MatchIf`, and `MatchCount` visit both storage deques and pass the stored packet type to predicates.
+At the start of a cycle, the write budget is capacity minus both visible and staged entries. Each successful write spends one slot. Removing entries with `Pop()`, `Read()`, or `FlushIf()` changes the contents immediately, but frees capacity for the producer only at the next queue `Work()`. A depth-one queue that starts full can therefore be both `Empty()` and `Full()` after a pop: it has nothing left to read and no slot left to write this cycle. Reset restores the full budget. See [decision 0012](../decisions/0012-queue-write-admission.md).
+
+`GetRawWriteData()` and `GetRawReadData()` expose mutable `std::deque<Packet>&`; `GetRawDelayCycle()` exposes delay metadata. Direct mutation bypasses normal capacity and delay bookkeeping; do not use these accessors for module transfers. `FlushIf`, `MatchIf`, and `MatchCount` visit both storage deques and pass the stored packet type to predicates.
 
 ## RID recovery
 

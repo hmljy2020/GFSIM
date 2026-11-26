@@ -70,6 +70,8 @@ public:
 private:
     static constexpr uint32_t kCapacityLimit = 512;
     uint32_t maxQSize = kCapacityLimit;
+    // Occupied slots at the last boundary plus successful writes since then.
+    uint32_t writeOccupancy = 0;
     std::deque<Packet> writeQ;
     std::deque<Packet> readQ;
     std::deque<uint32_t> delayQ;
@@ -118,6 +120,10 @@ public:
 
     void Work() override
     {
+        // Publishing entries changes their visibility, not total occupancy.
+        GFSIM_ASSERT(readQ.size() + writeQ.size() <= maxQSize)
+            << Name() << " capacity exceeded";
+        writeOccupancy = Size() + SizeW();
         if (stall) {
             return;
         }
@@ -146,6 +152,7 @@ public:
         writeQ.clear();
         readQ.clear();
         delayQ.clear();
+        writeOccupancy = 0;
         stall = false;
     }
     void Setlatency(uint32_t d)
@@ -154,7 +161,7 @@ public:
     }
     void ReportStat() override {}
 
-    bool toBeOverflow (uint32_t reserve) const { return writeQ.size() + readQ.size() + reserve >= maxQSize; }
+    bool toBeOverflow(uint32_t reserve) const { return Full(reserve); }
     bool getStall() const { return stall; }
     void setStall() { stall = true; }
     void unsetStall() { stall = false; }
@@ -176,10 +183,7 @@ public:
             writeQ.pop_back();
             throw;
         }
-        // Count the staged read side too: producers are expected to gate on
-        // Full(), so a grant miscalculation must not overflow silently.
-        GFSIM_ASSERT(writeQ.size() + readQ.size() <= maxQSize)
-            << Name() << " capacity exceeded";
+        ++writeOccupancy;
     };
 
     Packet Read()
@@ -219,11 +223,11 @@ public:
 
     bool Full() const
     {
-        return Size() + SizeW() >= maxQSize;
+        return Full(0);
     };
     bool Full(uint32_t reserve) const
     {
-        return Size() + SizeW() + reserve >= maxQSize;
+        return uint64_t{writeOccupancy} + reserve >= maxQSize;
     };
 
     uint32_t Size() const
