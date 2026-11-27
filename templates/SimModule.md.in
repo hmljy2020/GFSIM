@@ -40,3 +40,21 @@ List all owned queues and their payload formatters. Define any module duration s
 ## Tests
 
 List tests for normal flow, blocked cycles, reset, hierarchy, and log/report output.
+
+## Parallel execution and generated functions
+
+Keep ordinary functions as ordinary calls; do not create queue ports for function
+arguments. Generate only actual optional ports and bind non-null endpoints in the
+constructor. `PURE static` functions receive explicit const inputs and return
+results without queue access. Evaluate current state into pending state in
+`Work()` and commit it in `Xfer()`; reset both. A blocked local helper returns to
+`Work()`, which must still call `WorkChildren()` exactly once. Keep all five
+lifecycle methods and the child/queue helper positions shown in the code template.
+
+Document the selected parallel parent and physical queue owners. Its direct
+child subtrees run on fixed workers; queue advancement follows the producer
+subtree, or the consumer subtree when only that endpoint is on a worker. The
+owner helper skips delegated queues. Xfer commits private state and must not
+query queues or another module's state; perform readiness checks in Work.
+Describe payload ownership after handoff and obey the restricted parallel queue
+API in `docs/API/SimQueue.md`. No runtime port or hierarchy changes are allowed.

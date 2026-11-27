@@ -1,0 +1,45 @@
+#pragma once
+
+#include <array>
+
+#include "MeshPacket.h"
+#include "generated/MeshDimensions.h"
+#include "SimTestbench.h"
+
+namespace mesh_example {
+
+struct PacketTiming {
+    std::uint64_t injected = 0;
+    std::uint64_t delivered = 0;
+};
+
+class MeshBench final : public gfsim::SimTestbench {
+public:
+    explicit MeshBench(gfsim::SimSystem* system, bool reverseNodeOrder = false,
+                       std::uint32_t fakeIterations = 0);
+    void Build() override;
+    const std::array<PacketTiming, kPackets>& Timings() const { return timings_; }
+    std::uint64_t TotalHops() const { return totalHops_; }
+    std::uint64_t FakeChecksum() const;
+    std::uint64_t FakeRounds() const;
+
+private:
+    gfsim::SimQueue<Packet>* MakeQueue(const std::string& name);
+    void Inject(int src, gfsim::SimQueue<Packet>& output);
+    void Check(int dest, gfsim::SimQueue<Packet>& input);
+    void DriveStimuli() override;
+    void CheckOutputs() override;
+    bool Done() const override;
+    void ResetBench() override;
+    void ReportBench() override;
+
+    bool reverseNodeOrder_;
+    const std::uint32_t fakeIterations_;
+$ports
+    std::array<int, kNodes> sent_{};
+    std::array<PacketTiming, kPackets> timings_{};
+    std::uint64_t totalHops_ = 0;
+    std::uint64_t totalLatency_ = 0;
+};
+
+} // namespace mesh_example

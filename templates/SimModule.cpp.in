@@ -16,8 +16,10 @@ void @MODULE_NAME@::Build()
 
 void @MODULE_NAME@::Work()
 {
+    nextState_ = state_; // current state is read-only during evaluation
     // Atomic queue transfer pattern when ports exist:
-    // if (input_->Empty() || output_->Full()) return;
+    // In a local helper: if (input_->Empty() || output_->Full()) return;
+    // A local stall must never skip the WorkChildren() call below.
     // auto result = PureTransform(input_->Front());
     // output_->Write(std::move(result));
     // input_->Pop(); // consume only after output write succeeds
@@ -29,13 +31,16 @@ void @MODULE_NAME@::Work()
     // after its output Write succeeds.
     // Call GetSim()->MarkProgress() only after a real operation fires.
     UpdateState();
-    Log().Debug("@MODULE_NAME@", "work") << "work_cycles=" << state_.workCycles;
+    Log().Debug("@MODULE_NAME@", "work") << "work_cycles=" << nextState_.workCycles;
     WorkChildren();
 }
 
 void @MODULE_NAME@::Xfer()
 {
-    // Optional phase-boundary bookkeeping goes before queue advancement.
+    // Commit private state only; queue readiness belongs in Work().
+    state_ = nextState_;
+    // Do not query queues here: their advancement may run on other workers.
+    // The helper skips queues delegated to those workers.
     AdvanceInnerQueues();
     XferChildren();
 }
@@ -43,6 +48,7 @@ void @MODULE_NAME@::Xfer()
 void @MODULE_NAME@::Reset()
 {
     state_ = State{};
+    nextState_ = state_;
     ResetInnerQueues();
     ResetChildren();
 }
@@ -57,7 +63,7 @@ void @MODULE_NAME@::ReportStat()
 
 void @MODULE_NAME@::UpdateState()
 {
-    state_.workCycles = NextCount(state_.workCycles);
+    nextState_.workCycles = NextCount(state_.workCycles);
 }
 
 } // namespace gfsim

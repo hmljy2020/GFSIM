@@ -1,0 +1,116 @@
+#include "$name.h"
+#include "generated/MeshDimensions.h"
+
+namespace mesh_example {
+
+${name}::$name(int id,
+$parameters,
+        std::uint32_t fakeIterations)
+    : SimModule("node_" + std::to_string(id)),
+$bindings,
+      id_(id), fakeIterations_(fakeIterations)
+{
+    GFSIM_ASSERT(id >= 0 && id < kNodes);
+    GFSIM_ASSERT(localIn_ && localOut_);
+    GFSIM_ASSERT((westIn_ != nullptr) == (westOut_ != nullptr));
+    GFSIM_ASSERT((eastIn_ != nullptr) == (eastOut_ != nullptr));
+    GFSIM_ASSERT((northIn_ != nullptr) == (northOut_ != nullptr));
+    GFSIM_ASSERT((southIn_ != nullptr) == (southOut_ != nullptr));
+}
+
+void ${name}::Build()
+{
+    SetObjectCapacity(0);
+    BuildInnerQueues();
+    BuildChildren();
+}
+
+Direction ${name}::Route(int node, int destination)
+{
+    if (node % kColumns < destination % kColumns) return Direction::East;
+    if (node % kColumns > destination % kColumns) return Direction::West;
+    if (node < destination) return Direction::South;
+    if (node > destination) return Direction::North;
+    return Direction::Local;
+}
+
+Direction ${name}::Grant(Direction output, Direction last,
+$requests)
+{
+    // Prefer the first requesting input after the previous winner, then wrap.
+$after_last
+$after_wrap
+    return Direction::None;
+}
+
+void ${name}::Work()
+{
+    EvaluateFakeInstruction();
+    // Snapshot each input head before committing any grant.
+$read_inputs
+
+$output_blocks
+    WorkChildren();
+}
+
+std::uint64_t ${name}::FakeAlu(std::uint64_t state, std::uint32_t iterations)
+{
+    // A dependent integer chain models expensive host evaluation, not guest
+    // cycle latency. The returned state is committed and checked by the bench.
+    for (std::uint32_t i = 0; i < iterations; ++i) {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        state *= UINT64_C(0x2545f4914f6cdd1d);
+    }
+    return state;
+}
+
+void ${name}::EvaluateFakeInstruction()
+{
+    if (fakeIterations_ == 0) return;
+    nextFakeState_ = FakeAlu(fakeState_, fakeIterations_);
+    fakeRounds_ += fakeIterations_;
+    // Synthetic load alone does not count as network progress or mask deadlock.
+}
+
+void ${name}::LogTransfer(int packetId, const std::string& output)
+{
+    if (auto* trace = Trace()) {
+        const auto cycle = GetSim()->Cycles();
+        trace->AddDuration(Path(), "forward", cycle - 1, cycle, output);
+    }
+    if (Log().Level() == gfsim::LogLevel::Debug) {
+        Log().Debug(Name(), "forward") << "packet=" << packetId << " to " << output;
+    }
+}
+
+void ${name}::Xfer()
+{
+    fakeState_ = nextFakeState_;
+    AdvanceInnerQueues();
+    XferChildren();
+}
+
+void ${name}::Reset()
+{
+$reset
+    forwarded_ = 0;
+    fakeState_ = UINT64_C(0x9e3779b97f4a7c15) ^ static_cast<std::uint64_t>(id_);
+    nextFakeState_ = fakeState_;
+    fakeRounds_ = 0;
+    ResetInnerQueues();
+    ResetChildren();
+}
+
+void ${name}::ReportStat()
+{
+    Report().ReportVal(Name() + " inter-node hops", forwarded_);
+    if (fakeIterations_ != 0) {
+        Report().ReportVal(Name() + " fake ALU rounds (since reset)", fakeRounds_);
+        Report().ReportVal(Name() + " fake ALU checksum", fakeState_);
+    }
+    ReportChildren();
+}
+
+} // namespace mesh_example

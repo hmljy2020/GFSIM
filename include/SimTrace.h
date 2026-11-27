@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -93,6 +94,7 @@ private:
     std::uint64_t ModuleLane(const std::string& module);
 
     std::ostream* output_; // non-owning
+    std::mutex eventMutex_;
     std::uint64_t sampleEvery_;
     std::uint64_t nextFlowId_ = 1;
     bool firstEvent_ = true;

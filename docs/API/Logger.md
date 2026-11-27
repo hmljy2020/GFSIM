@@ -21,3 +21,10 @@ Log().Warn("dispatch", "stall") << "output_full";
 ```
 
 Output format: `[C:<cycle>][<unit>.<stage>][<LEVEL>] <message>`. Use stable unit and stage strings so logs can be filtered or compared in tests.
+
+Concurrent model tasks may emit lines through the same logger. `Emit()` holds a
+mutex for the complete record, preventing interleaved fields. Ordering between
+workers in the same cycle is unspecified. Configure output/level/cycle only
+while workers are idle; the system sets the cycle before dispatch. Keep each
+`Line` local to one call and keep the output stream alive. Independent logger
+instances sharing one stream require external synchronization.

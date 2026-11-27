@@ -44,3 +44,43 @@ Register root modules with `SimSystem` before build. Physical queues must be own
 See [`tests/simmodule/test_simmodule.cpp`](../../tests/simmodule/test_simmodule.cpp) for a parent with two children and distinct output types, and [decision 0002](../decisions/0002-simmodule-template.md) for the ownership contract.
 
 After `Build()`, `SimSystem::WriteDot()` renders the module hierarchy and bound queues; see the [DOT graph API](SimGraph.md).
+
+## Parallel traversal and generated models
+
+`WorkChildren()` and `XferChildren()` are out-of-line dispatch points. At the
+configured split parent they run direct child subtrees on persistent workers
+and wait for completion. Everywhere else they recurse in registration order.
+Call each helper exactly once in its lifecycle phase even if local work is
+blocked: put early-return readiness checks in a local helper, then call
+`WorkChildren()` unconditionally. Do not call child lifecycle methods directly
+in addition to the traversal helpers. Keep `AdvanceInnerQueues()` before
+`XferChildren()`. The advancement helper handles queues that remain local and
+skips queues delegated to workers; it does not promise that owned queues have
+already advanced when it returns.
+
+Generated GFIR functions map to ordinary calls, with explicit arguments; they
+do not create boundary ports. Generate only existing ports, allow each output
+its own type, and bind optional non-null endpoints in the constructor. Use
+`PURE static` for combinational functions. Read current state in Work, write
+pending state, and commit pending state in Xfer; Reset clears both. Do not read
+another module's mutable state concurrently. Queue transfer remains the
+communication mechanism between modules.
+
+A subtree owns its mutable module state. Physical queue ownership determines
+lifetime, Reset, and topology; execution assignment is computed from its producer
+and consumer subtrees. A worker advances its assigned queues in Xfer, independently
+of other worker tasks and owner callbacks. Module Xfer must only commit private
+state and call lifecycle helpers. Do not query queues or read another module's
+state in Xfer. Check input readiness and output Full() during Work, where queue
+admission is independent of concurrent consumer Pops. Remove capacity caches
+sampled during Xfer or Reset; the queue already maintains the admission count.
+
+Within each system phase independent worker tasks may overlap, but module Work
+and queue publication never overlap. SimQueue::Work() is the legacy publication
+entry point called during system Xfer, not an ordinary module Work task.
+
+For an example that varies host Work cost without changing simulated queue
+latency, see [heavy Mesh](../../examples/mesh/HeavyMesh.md). Its pure arithmetic
+helper computes pending private state during Work and commits it in Xfer;
+checksums and round counters are read only while workers are idle. Artificial
+benchmark computation alone does not count as progress toward packet delivery.

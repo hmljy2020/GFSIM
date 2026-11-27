@@ -151,6 +151,7 @@ void SimTrace::AddDuration(const std::string& module, const std::string& name,
                            std::uint64_t startCycle, std::uint64_t endCycle,
                            const std::string& detail)
 {
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (endCycle < startCycle) {
         throw std::invalid_argument("trace duration ends before it starts");
     }
@@ -168,6 +169,7 @@ void SimTrace::AddFlow(const std::string& fromModule,
                        std::uint64_t startCycle, std::uint64_t endCycle,
                        const std::string& name)
 {
+    std::lock_guard<std::mutex> lock(eventMutex_);
     if (endCycle < startCycle) {
         throw std::invalid_argument("trace flow ends before it starts");
     }

@@ -89,19 +89,8 @@ protected:
         }
     }
 
-    void WorkChildren()
-    {
-        for (const auto& child : submodules_) {
-            child->Work();
-        }
-    }
-
-    void XferChildren()
-    {
-        for (const auto& child : submodules_) {
-            child->Xfer();
-        }
-    }
+    void WorkChildren();
+    void XferChildren();
 
     void ResetChildren()
     {
@@ -117,12 +106,7 @@ protected:
         }
     }
 
-    void AdvanceInnerQueues()
-    {
-        for (const auto& queue : innerQueues_) {
-            queue->Work();
-        }
-    }
+    void AdvanceInnerQueues();
 
     void ResetInnerQueues()
     {

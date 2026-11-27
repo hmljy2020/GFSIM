@@ -1,0 +1,136 @@
+#include "MeshBench.h"
+
+$includes
+
+#include <algorithm>
+#include <cstdlib>
+#include <vector>
+
+namespace mesh_example {
+namespace {
+
+PURE std::string FormatPacket(const Packet& packet)
+{
+    return "id=" + std::to_string(packet.id) + " src=" + std::to_string(packet.source) +
+           " dst=" + std::to_string(packet.destination) + " hops=" + std::to_string(packet.hops);
+}
+
+PURE int Distance(int source, int destination)
+{
+    return std::abs(source % kColumns - destination % kColumns) +
+           std::abs(source / kColumns - destination / kColumns);
+}
+
+} // namespace
+
+MeshBench::MeshBench(gfsim::SimSystem* system, bool reverseNodeOrder, std::uint32_t fakeIterations)
+    : SimTestbench("mesh", system), reverseNodeOrder_(reverseNodeOrder),
+      fakeIterations_(fakeIterations) {}
+
+gfsim::SimQueue<Packet>* MeshBench::MakeQueue(const std::string& name)
+{
+    auto* queue = AddInnerQueue(std::make_shared<gfsim::SimQueue<Packet>>(name));
+    queue->InitMaxSize(2);
+    queue->Setlatency(1);
+    queue->SetTraceFormatter(FormatPacket);
+    return queue;
+}
+
+void MeshBench::Build()
+{
+    SetObjectCapacity($object_count);
+$queues
+
+    std::vector<std::shared_ptr<gfsim::SimModule>> nodes{
+$nodes
+    };
+    if (reverseNodeOrder_) std::reverse(nodes.begin(), nodes.end());
+    for (const auto& node : nodes) AddSubmodule(node);
+    BuildInnerQueues();
+    BuildChildren();
+}
+
+void MeshBench::DriveStimuli()
+{
+$inject_calls
+}
+
+void MeshBench::CheckOutputs()
+{
+$check_calls
+}
+
+void MeshBench::Inject(int src, gfsim::SimQueue<Packet>& output)
+{
+    const int seq = sent_[src];
+    if (seq == kNodes - 1 || output.Full()) return;
+    const int id = src * (kNodes - 1) + seq;
+    const int dest = (src + seq + 1) % kNodes;
+    auto packet = std::make_shared<Packet>(Packet{id, src, dest, 0});
+    output.Write(packet);
+    timings_[id].injected = GetSim()->Cycles();
+    ++sent_[src];
+    RecordStimulus("packet " + std::to_string(id));
+}
+
+void MeshBench::Check(int dest, gfsim::SimQueue<Packet>& input)
+{
+    if (input.Empty()) return;
+    const auto& packet = input.Peek();
+    const int id = packet.id;
+    GFSIM_ASSERT(id >= 0 && id < kPackets) << "unexpected packet id " << id;
+    const int src = id / (kNodes - 1);
+    const int expectedDest = (src + id % (kNodes - 1) + 1) % kNodes;
+    GFSIM_ASSERT(packet.source == src && packet.destination == expectedDest && dest == expectedDest)
+        << FormatPacket(packet) << " delivered on port " << dest;
+    auto& timing = timings_[id];
+    GFSIM_ASSERT(timing.injected && !timing.delivered) << "unsent or duplicate packet " << id;
+    GFSIM_ASSERT(packet.hops == Distance(src, dest)) << FormatPacket(packet);
+    timing.delivered = GetSim()->Cycles();
+    totalHops_ += packet.hops;
+    totalLatency_ += timing.delivered - timing.injected;
+    input.Pop();
+    RecordOutputChecked("packet " + std::to_string(id));
+}
+
+bool MeshBench::Done() const { return OutputsChecked() == kPackets; }
+
+void MeshBench::ResetBench()
+{
+    sent_.fill(0);
+    timings_.fill(PacketTiming{});
+    totalHops_ = 0;
+    totalLatency_ = 0;
+}
+
+std::uint64_t MeshBench::FakeChecksum() const
+{
+    std::uint64_t checksum = 0;
+    for (const auto& child : Submodules()) {
+        checksum ^= static_cast<const MeshNode*>(child.get())->FakeChecksum();
+    }
+    return checksum;
+}
+
+std::uint64_t MeshBench::FakeRounds() const
+{
+    std::uint64_t rounds = 0;
+    for (const auto& child : Submodules()) {
+        rounds += static_cast<const MeshNode*>(child.get())->FakeRounds();
+    }
+    return rounds;
+}
+
+void MeshBench::ReportBench()
+{
+    if (fakeIterations_ != 0) {
+        Report().ReportVal("Fake ALU rounds per node per cycle", fakeIterations_);
+        Report().ReportVal("Total fake ALU rounds (since reset)", FakeRounds());
+        Report().ReportVal("Combined fake ALU checksum", FakeChecksum());
+    }
+    Report().ReportVal("Simulation cycles", GetSim()->Cycles());
+    Report().ReportVal("Delivered inter-node hops", totalHops_);
+    Report().ReportAvg("Mean latency (cycles/delivered packet)", totalLatency_, OutputsChecked());
+}
+
+} // namespace mesh_example
