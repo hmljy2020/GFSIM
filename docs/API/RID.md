@@ -12,6 +12,8 @@ Header: `include/RID.h`. Namespace: `gfsim`. Requires C++11.
 | `FlushIf(rid, compare)` | Remove packets for which `compare(packetRid, targetRid)` returns true. Invalid packet RIDs are ignored. |
 | `FlushIf(predicate)` | Preserve the generic packet predicate path for non-RID criteria, including thread or block context. |
 
+Flush is immediate maintenance: use it only while the system is quiescent, with exclusive queue access and no pending Pop/Read. A pending consumption raises `AssertionError` before predicate evaluation or mutation; invalid target RID validation still takes precedence.
+
 All forms return the number of removed packets. They inspect both staged and visible storage. Staged delay counters are removed with their corresponding packets, including when latency changes between writes.
 
 For class/struct `T`, the default RID accessor reads a field declared as `RID rid`. If the identity is nested or computed, call `SetRidExtractor(std::function<RID(const T&)>)`. Scalar queues also need an extractor before RID-based flushing. The extractor receives the **value/object**, not the shared pointer.

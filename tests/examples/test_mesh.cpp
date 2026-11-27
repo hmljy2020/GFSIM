@@ -166,6 +166,30 @@ void TestCapacityAtWork(std::size_t workers)
     GFSIM_ASSERT(input.Empty() && output.Front() == packet && packet->hops == 2);
 }
 
+void TestOneConsumptionPerInput(std::size_t workers)
+{
+    Fixture f(false, workers);
+    for (int i = 0; i < kNodes; ++i) f.queues.at("inject_" + std::to_string(i))->setStall();
+    auto& input = *f.queues.at("link_8_to_9");
+    auto& west = *f.queues.at("link_9_to_8");
+    auto& east = *f.queues.at("link_9_to_10");
+    west.setStall();
+    east.setStall();
+    const auto first = std::make_shared<Packet>(Packet{0, 8, 8, 1});
+    const auto second = std::make_shared<Packet>(Packet{1, 8, 19, 1});
+    input.Write(first);
+    input.Write(second);
+    input.Work();
+    f.sim.Step();
+    // The first head requests west; the second must wait until the next cycle
+    // even though the later east arbitration block has output space.
+    GFSIM_ASSERT(input.Size() == 1 && input.Front() == second && second->hops == 1);
+    GFSIM_ASSERT(west.SizeW() == 1 && east.WRBothEmpty() && first->hops == 2);
+    f.sim.Step();
+    GFSIM_ASSERT(input.Empty() && east.SizeW() == 1 && second->hops == 2);
+    GFSIM_ASSERT(west.SizeW() == 1);
+}
+
 void TestWrongDelivery(std::size_t workers)
 {
     Fixture f(false, workers);
@@ -252,6 +276,7 @@ int main(int argc, char** argv)
     for (std::size_t workers : {0u, 1u, 2u, 4u}) {
         TestArbitrationAndBackpressure(workers);
         TestCapacityAtWork(workers);
+        TestOneConsumptionPerInput(workers);
         TestWrongDelivery(workers);
         TestDeadlock(workers);
     }

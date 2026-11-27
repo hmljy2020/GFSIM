@@ -48,7 +48,7 @@ advance each element separately. Owner Xfer visits N instances in O(N), each che
 
 List private state fields and their reset values. Describe the blocking checks before input consumption, local helper methods, `Work()` behavior, and `Xfer()` bookkeeping. Define the exact event that calls `MarkProgress()`, the completion condition that calls `RequestTerminate()`, and the chosen deadlock threshold.
 
-List every `PURE` method, its explicit inputs and output, and why it is independent of module state. State the complete transaction readiness condition and the commit order: peek, compute, write outputs, then pop inputs. Explain blocked-cycle behavior.
+List every `PURE` method, its explicit inputs and output, and why it is independent of module state. State the complete transaction readiness condition and the commit order: peek, compute, write outputs, then pop inputs. Explain blocked-cycle behavior. Each input allows one Pop/Read request per cycle; a second request asserts. Consumption commits during system Xfer, so Front/Peek/Empty/Size remain unchanged throughout Work. Use transaction counts or a later Work query for completion, never a queue query in Xfer.
 
 Identify which queues carry scalar values and which carry `std::shared_ptr<Message>`. For pointer messages, name the allocation source and whether downstream modules only forward or intentionally mutate the object.
 
@@ -84,7 +84,7 @@ subtree, or the consumer subtree when only that endpoint is on a worker. The
 owner helper skips delegated queues. Xfer commits private state and must not
 query queues or another module's state; perform readiness checks in Work.
 Describe payload ownership after handoff and obey the restricted parallel queue
-API in `docs/API/SimQueue.md`. No runtime port or hierarchy changes are allowed.
+API in `docs/API/SimQueue.md`. Other workers may query Front/Peek/Empty/Size during Work, including through methods. Payload mutation must not race with those readers, even after a successful output write. References to the visible front survive consumption requests but must not be retained across advancement, flush, or reset. FlushIf requires quiescence, exclusive access, and no pending consumption. No runtime port or hierarchy changes are allowed.
 
 Embedded state current values stay read-only during Work. Different workers may
 write different SimState instances through ordinary pointers or methods on a

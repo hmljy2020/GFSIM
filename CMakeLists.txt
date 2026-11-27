@@ -39,6 +39,15 @@ add_executable(method_example examples/methods/main.cpp)
 target_link_libraries(method_example PRIVATE method_example_model)
 
 if(BUILD_TESTING)
+    add_executable(delayed_consume_test tests/queue/test_delayed_consume.cpp)
+    target_link_libraries(delayed_consume_test PRIVATE gfsim)
+    add_test(NAME delayed_consume COMMAND delayed_consume_test)
+    add_executable(queue_method_visibility_test tests/queue/test_queue_methods.cpp
+                   tests/queue/QueueView.cpp tests/queue/QueueBench.cpp)
+    target_link_libraries(queue_method_visibility_test PRIVATE gfsim)
+    add_test(NAME queue_method_visibility COMMAND queue_method_visibility_test
+             ${CMAKE_CURRENT_BINARY_DIR}/queue-methods.dot)
+    set_tests_properties(queue_method_visibility PROPERTIES TIMEOUT 60)
     add_executable(bind_module_test tests/methods/test_bind_module.cpp
                    tests/methods/ReferenceNode.cpp)
     target_include_directories(bind_module_test PRIVATE src)
@@ -52,6 +61,10 @@ if(BUILD_TESTING)
     set_tests_properties(bind_module method_interaction method_example PROPERTIES TIMEOUT 60)
     find_program(GFSIM_DOT dot)
     if(GFSIM_DOT)
+        add_test(NAME queue_methods_graph_render COMMAND ${GFSIM_DOT} -Tsvg
+                 ${CMAKE_CURRENT_BINARY_DIR}/queue-methods.dot
+                 -o ${CMAKE_CURRENT_BINARY_DIR}/queue-methods.svg)
+        set_tests_properties(queue_methods_graph_render PROPERTIES DEPENDS queue_method_visibility)
         add_test(NAME method_graph_render COMMAND ${GFSIM_DOT} -Tsvg
                  ${CMAKE_CURRENT_BINARY_DIR}/methods.dot -o ${CMAKE_CURRENT_BINARY_DIR}/methods.svg)
         set_tests_properties(method_graph_render PROPERTIES DEPENDS method_interaction)

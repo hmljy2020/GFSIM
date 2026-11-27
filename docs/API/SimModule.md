@@ -73,7 +73,7 @@ not intercept pointer assignments or method calls.
 Methods are ordinary explicit synchronous C++ calls on the **caller's thread**.
 The target's Work does not automatically invoke them. During Work, methods may
 query current state, stage SimState writes, and perform legal queue operations.
-Only the owner commits a state during Xfer. Different workers may write different
+Read-only methods may query a queue's Front/Peek/Empty/Size throughout Work, including after its consumer requests Pop/Read. Each queue permits only one consumption request per cycle; other queue access rules still apply. Concurrent payload queries must not race with mutation of the shared object. Only the owner commits a state during Xfer. Different workers may write different
 instances; the model must prevent concurrent writes to one instance, including
 different members of a struct value. Mutable diagnostics in methods need the
 same discipline. Cross-module state interaction belongs in Work, never Xfer.

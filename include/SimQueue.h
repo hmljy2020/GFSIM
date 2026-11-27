@@ -74,6 +74,8 @@ private:
     uint32_t writeOccupancy = 0;
     std::deque<Packet> writeQ;
     std::deque<Packet> readQ;
+    // Only the consumer writes this during Work; readers inspect readQ only.
+    bool popPending_ = false;
     std::deque<uint32_t> delayQ;
     uint32_t latency = 1;
     bool stall;
@@ -120,6 +122,12 @@ public:
 
     void Work() override
     {
+        // Legacy queue advancement runs in system Xfer, after all module Work.
+        if (popPending_) {
+            GFSIM_ASSERT(!readQ.empty()) << Name() << " pending pop from empty queue";
+            readQ.pop_front();
+            popPending_ = false;
+        }
         // Publishing entries changes their visibility, not total occupancy.
         GFSIM_ASSERT(readQ.size() + writeQ.size() <= maxQSize)
             << Name() << " capacity exceeded";
@@ -153,6 +161,7 @@ public:
         readQ.clear();
         delayQ.clear();
         writeOccupancy = 0;
+        popPending_ = false;
         stall = false;
     }
     void Setlatency(uint32_t d)
@@ -189,8 +198,9 @@ public:
     Packet Read()
     {
         GFSIM_ASSERT(!readQ.empty()) << Name() << " read from empty queue";
-        Packet result = std::move(readQ.front());
-        readQ.pop_front();
+        GFSIM_ASSERT(!popPending_) << Name() << " multiple consumes in one cycle";
+        Packet result = readQ.front();
+        popPending_ = true;
         return result;
     };
 
@@ -208,7 +218,8 @@ public:
     void Pop()
     {
         GFSIM_ASSERT(!readQ.empty()) << Name() << " pop from empty queue";
-        readQ.pop_front();
+        GFSIM_ASSERT(!popPending_) << Name() << " multiple consumes in one cycle";
+        popPending_ = true;
     }
 
     bool Empty() const
@@ -264,6 +275,7 @@ public:
         std::size_t>::type
     FlushIf(Function&& match)
     {
+        GFSIM_ASSERT(!popPending_) << Name() << " flush with pending consumption";
         GFSIM_ASSERT(writeQ.size() == delayQ.size())
             << Name() << " staged data/delay metadata are misaligned";
         std::size_t removed = 0;

@@ -23,13 +23,15 @@ void @MODULE_NAME@::Work()
     // A local stall must never skip the WorkChildren() call below.
     // auto result = PureTransform(input_->Front());
     // output_->Write(std::move(result));
-    // input_->Pop(); // consume only after output write succeeds
+    // input_->Pop(); // request consumption only after output write succeeds
+    // At most one Pop/Read per input per cycle; a second request asserts.
+    // Front/Peek/Empty/Size stay unchanged until queue advancement in Xfer.
     // Modules with no ports can update local state directly.
     // Small scalar token: output_->Write(input_->Front()); input_->Pop();
     // Class source: auto packet = std::make_shared<Message>(...);
     // Class later stage: peek input_->Front(), compute a PURE result,
     // write output, then input_->Pop(). Mutate a forwarded packet only
-    // after its output Write succeeds.
+    // after its output Write succeeds and no concurrent payload reader exists.
     // Call GetSim()->MarkProgress() only after a real operation fires.
     const std::uint64_t nextCount = UpdateState();
     Log().Debug("@MODULE_NAME@", "work") << "work_cycles=" << nextCount;

@@ -238,9 +238,12 @@ void TestAllPortsAdmitted()
           "a same-cycle pop must not grant a multi-port transaction");
     product.Work(); // publish the free slot
     module.Work();
-    Check(module.Fires() == 1 && first.Empty() && second.Empty() &&
+    Check(module.Fires() == 1 && first.Size() == 1 && second.Size() == 1 &&
               sum.SizeW() == 1 && product.SizeW() == 1,
-          "all outputs must be written before both inputs are consumed");
+          "outputs stage while input consumption remains pending");
+    first.Work();
+    second.Work();
+    Check(first.Empty() && second.Empty(), "input consumption commits at the boundary");
     sum.Work();
     product.Work();
     Check(sum.Read() == 5 && product.Read() == 6,
@@ -253,25 +256,28 @@ void TestWriteCapacity()
     queue.InitMaxSize(3);
     queue.Write(1);
     queue.Work();
-    Check(queue.Read() == 1 && queue.Empty() && !queue.Full(1) && queue.Full(2),
+    Check(queue.Read() == 1 && queue.Front() == 1 && queue.Size() == 1 && !queue.Full(1) && queue.Full(2),
           "read must not enlarge this cycle's two-slot write budget");
     queue.Write(2);
     queue.Write(3);
     Check(queue.Full() && queue.toBeOverflow(std::numeric_limits<uint32_t>::max()),
           "staged writes must consume capacity and reservations must not wrap");
-    Check(queue.FlushIf([](int value) { return value == 2; }) == 1 && queue.Full(),
-          "flushing a staged entry releases its slot at the boundary");
     bool rejected = false;
     try {
         queue.Write(4);
     } catch (const gfsim::AssertionError&) {
         rejected = true;
     }
-    Check(rejected && queue.SizeW() == 1, "full write must fail without staging a packet");
+    Check(rejected && queue.SizeW() == 2, "full write must fail without staging a packet");
     queue.setStall();
     queue.Work();
-    Check(queue.Empty() && queue.SizeW() == 1 && !queue.Full(1) && queue.Full(2),
-          "a stalled boundary must return freed slots without publishing data");
+    Check(queue.Empty() && queue.SizeW() == 2 && !queue.Full() && queue.Full(1),
+          "a stalled boundary commits consumption without publishing data");
+    Check(queue.FlushIf([](int value) { return value == 2; }) == 1 && queue.Full(1),
+          "quiescent flush releases its slot only at the next boundary");
+    queue.Work();
+    Check(queue.SizeW() == 1 && !queue.Full(1) && queue.Full(2),
+          "a stalled boundary refreshes the budget after maintenance flush");
     queue.Reset();
     Check(queue.WRBothEmpty() && !queue.Full(2), "reset must restore all three slots");
 }

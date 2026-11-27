@@ -21,10 +21,10 @@ class PipelineStage final : public gfsim::SimModule {
 public:
     PipelineStage(std::string name, gfsim::SimQueue<gfsim_test::Number>* input,
                   gfsim::SimQueue<gfsim_test::Number>* output, int multiplier,
-                  int offset, bool finalStage = false)
+                  int offset)
         : SimModule(std::move(name)), input_(BindInput(input)),
           output_(BindOutput(output)), multiplier_(multiplier),
-          offset_(offset), finalStage_(finalStage)
+          offset_(offset)
     {
     }
 
@@ -43,9 +43,6 @@ public:
         ++processed_;
         GetSim()->MarkProgress();
         Log().Info(Name(), "work") << "result=" << result;
-        if (finalStage_) {
-            GetSim()->RequestTerminate("pipeline complete");
-        }
     }
 
     void Xfer() override {}
@@ -62,7 +59,6 @@ private:
     OUTPUT gfsim::SimQueue<gfsim_test::Number>* output_;
     int multiplier_;
     int offset_;
-    bool finalStage_;
     int buildCount_ = 0;
     int processed_ = 0;
 };
@@ -98,17 +94,16 @@ public:
         BuildChildren();
     }
 
-    void Work() override { WorkChildren(); }
-    void Xfer() override
+    void Work() override
     {
-        AdvanceInnerQueues();
-        XferChildren();
         if (!output_->Empty()) {
             completed_ = output_->Read();
             GetSim()->MarkProgress();
             GetSim()->RequestTerminate("pipeline complete");
         }
+        WorkChildren();
     }
+    void Xfer() override { AdvanceInnerQueues(); XferChildren(); }
     void Reset() override
     {
         ResetInnerQueues();
@@ -187,7 +182,9 @@ void TestThreeStagePipeline()
     Check(!system.NeedTerminate(),
           "stage2 must hand off to stage3 on the next cycle");
     system.Step();
-    Check(system.Cycles() == 4 && system.NeedTerminate() &&
+    Check(!system.NeedTerminate(), "stage3 output is consumed in the next Work");
+    system.Step();
+    Check(system.Cycles() == 5 && system.NeedTerminate() &&
               system.TerminationReason() == "pipeline complete" &&
               pipeline->Completed() == firstPacket &&
               pipeline->Completed()->value == 19,
@@ -213,7 +210,7 @@ void TestThreeStagePipeline()
     const auto secondPacket = gfsim_test::MakeNumber(1);
     pipeline->Submit(secondPacket);
     system.Run(5);
-    Check(system.Cycles() == 4 && pipeline->Completed() == secondPacket &&
+    Check(system.Cycles() == 5 && pipeline->Completed() == secondPacket &&
               pipeline->Completed()->value == 1,
           "Run must preserve packet identity and reset must clear prior state");
 
