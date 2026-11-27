@@ -23,8 +23,9 @@ PURE int Distance(int source, int destination)
 
 } // namespace
 
-MeshBench::MeshBench(gfsim::SimSystem* system, bool reverseNodeOrder)
-    : SimTestbench("mesh", system), reverseNodeOrder_(reverseNodeOrder) {}
+MeshBench::MeshBench(gfsim::SimSystem* system, bool reverseNodeOrder, std::uint32_t fakeIterations)
+    : SimTestbench("mesh", system), reverseNodeOrder_(reverseNodeOrder),
+      fakeIterations_(fakeIterations) {}
 
 gfsim::SimQueue<Packet>* MeshBench::MakeQueue(const std::string& name)
 {
@@ -102,8 +103,31 @@ void MeshBench::ResetBench()
     totalLatency_ = 0;
 }
 
+std::uint64_t MeshBench::FakeChecksum() const
+{
+    std::uint64_t checksum = 0;
+    for (const auto& child : Submodules()) {
+        checksum ^= static_cast<const MeshNode*>(child.get())->FakeChecksum();
+    }
+    return checksum;
+}
+
+std::uint64_t MeshBench::FakeRounds() const
+{
+    std::uint64_t rounds = 0;
+    for (const auto& child : Submodules()) {
+        rounds += static_cast<const MeshNode*>(child.get())->FakeRounds();
+    }
+    return rounds;
+}
+
 void MeshBench::ReportBench()
 {
+    if (fakeIterations_ != 0) {
+        Report().ReportVal("Fake ALU rounds per node per cycle", fakeIterations_);
+        Report().ReportVal("Total fake ALU rounds (since reset)", FakeRounds());
+        Report().ReportVal("Combined fake ALU checksum", FakeChecksum());
+    }
     Report().ReportVal("Simulation cycles", GetSim()->Cycles());
     Report().ReportVal("Delivered inter-node hops", totalHops_);
     Report().ReportAvg("Mean latency (cycles/delivered packet)", totalLatency_, OutputsChecked());

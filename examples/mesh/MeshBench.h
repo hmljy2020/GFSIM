@@ -16,10 +16,13 @@ struct PacketTiming {
 
 class MeshBench final : public gfsim::SimTestbench {
 public:
-    explicit MeshBench(gfsim::SimSystem* system, bool reverseNodeOrder = false);
+    explicit MeshBench(gfsim::SimSystem* system, bool reverseNodeOrder = false,
+                       std::uint32_t fakeIterations = 0);
     void Build() override;
     const std::array<PacketTiming, kPackets>& Timings() const { return timings_; }
     std::uint64_t TotalHops() const { return totalHops_; }
+    std::uint64_t FakeChecksum() const;
+    std::uint64_t FakeRounds() const;
 
 private:
     gfsim::SimQueue<Packet>* MakeQueue(const std::string& name);
@@ -32,6 +35,7 @@ private:
     void ReportBench() override;
 
     bool reverseNodeOrder_;
+    const std::uint32_t fakeIterations_;
     OUTPUT gfsim::SimQueue<Packet>* inject0_ = nullptr;
     INPUT gfsim::SimQueue<Packet>* deliver0_ = nullptr;
     OUTPUT gfsim::SimQueue<Packet>* inject1_ = nullptr;

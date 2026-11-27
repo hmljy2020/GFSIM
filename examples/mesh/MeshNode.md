@@ -20,3 +20,13 @@
 4. 串行时拍末由顶层推进物理队列；配置并行切分后，队列跟随生产节点任务推进，注入队列跟随接收节点任务推进。节点 Xfer 不查询队列容量。全部 Xfer 完成后进入下一拍，下游本拍腾出的槽位才可写入。复位时通过物理拥有者清空队列，并清零节点计数和仲裁状态。
 
 Debug 日志的 `forward` 和 `blocked` 阶段定位实际输出队列。`ReportStat()` 汇报该节点自复位以来成功送入邻居链路的次数。开启 trace 后，每次成功转发在 `mesh/node_N` 泳道产生一拍的 `forward` 事件，附带目标队列名。示例 CTest 用两个输入争用同一输出，验证授予顺序、满队列、阻塞时的包身份和恢复后的 XY 路径。
+
+## 可选的 heavy Work
+
+构造参数 `fakeIterations` 默认为 0。启用后，Work 通过 PURE static FakeAlu
+对私有状态执行给定轮数的整数依赖链，写入 nextFakeState；Xfer 提交到
+fakeState。该计算没有端口、队列或全局状态访问，不影响仲裁与包内容。
+Reset 恢复由节点 ID 决定的固定种子，并清零 fakeRounds。FakeChecksum 和
+FakeRounds 供运行结束后的验证与报告使用，不能在其他工作线程运行时读取。
+统计明确区分 ALU 迭代轮数与网络转发次数；fake 求值本身不标记网络进展。
+详见 [HeavyMesh](HeavyMesh.md)。

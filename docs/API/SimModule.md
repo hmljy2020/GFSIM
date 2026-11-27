@@ -78,3 +78,9 @@ sampled during Xfer or Reset; the queue already maintains the admission count.
 Within each system phase independent worker tasks may overlap, but module Work
 and queue publication never overlap. SimQueue::Work() is the legacy publication
 entry point called during system Xfer, not an ordinary module Work task.
+
+For an example that varies host Work cost without changing simulated queue
+latency, see [heavy Mesh](../../examples/mesh/HeavyMesh.md). Its pure arithmetic
+helper computes pending private state during Work and commits it in Xfer;
+checksums and round counters are read only while workers are idle. Artificial
+benchmark computation alone does not count as progress toward packet delivery.

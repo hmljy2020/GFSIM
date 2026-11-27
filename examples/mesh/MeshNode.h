@@ -13,18 +13,23 @@ public:
         gfsim::SimQueue<Packet>* westIn, gfsim::SimQueue<Packet>* westOut,
         gfsim::SimQueue<Packet>* eastIn, gfsim::SimQueue<Packet>* eastOut,
         gfsim::SimQueue<Packet>* northIn, gfsim::SimQueue<Packet>* northOut,
-        gfsim::SimQueue<Packet>* southIn, gfsim::SimQueue<Packet>* southOut);
+        gfsim::SimQueue<Packet>* southIn, gfsim::SimQueue<Packet>* southOut,
+        std::uint32_t fakeIterations = 0);
 
     void Build() override;
     void Work() override;
     void Xfer() override;
     void Reset() override;
     void ReportStat() override;
+    std::uint64_t FakeChecksum() const { return fakeState_; }
+    std::uint64_t FakeRounds() const { return fakeRounds_; }
 
 private:
     PURE static Direction Route(int node, int destination);
     PURE static Direction Grant(Direction output, Direction last,
         Direction local, Direction west, Direction east, Direction north, Direction south);
+    PURE static std::uint64_t FakeAlu(std::uint64_t state, std::uint32_t iterations);
+    void EvaluateFakeInstruction();
     void LogTransfer(int packetId, const std::string& output);
 
     INPUT gfsim::SimQueue<Packet>* localIn_;
@@ -48,6 +53,10 @@ private:
     Direction lastSouth_ = Direction::None;
 
     int id_;
+    const std::uint32_t fakeIterations_;
+    std::uint64_t fakeState_ = 0;
+    std::uint64_t nextFakeState_ = 0;
+    std::uint64_t fakeRounds_ = 0;
     std::uint64_t forwarded_ = 0;
 };
 

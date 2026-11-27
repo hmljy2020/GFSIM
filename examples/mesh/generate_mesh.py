@@ -105,7 +105,7 @@ def mesh_files():
                 for link in (outgoing, incoming):
                     queues.append(f'    auto* {link} = MakeQueue("{link}");')
         arguments = ",\n            ".join(inputs_outputs)
-        nodes.append(f"        std::make_shared<MeshNode>({node},\n            {arguments})")
+        nodes.append(f"        std::make_shared<MeshNode>({node},\n            {arguments}, fakeIterations_)")
 
     files["generated/MeshDimensions.h"] = BANNER + f"""#pragma once
 

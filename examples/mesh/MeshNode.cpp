@@ -9,14 +9,15 @@ MeshNode::MeshNode(int id,
         gfsim::SimQueue<Packet>* westIn, gfsim::SimQueue<Packet>* westOut,
         gfsim::SimQueue<Packet>* eastIn, gfsim::SimQueue<Packet>* eastOut,
         gfsim::SimQueue<Packet>* northIn, gfsim::SimQueue<Packet>* northOut,
-        gfsim::SimQueue<Packet>* southIn, gfsim::SimQueue<Packet>* southOut)
+        gfsim::SimQueue<Packet>* southIn, gfsim::SimQueue<Packet>* southOut,
+        std::uint32_t fakeIterations)
     : SimModule("node_" + std::to_string(id)),
       localIn_(localIn ? BindInput(localIn) : nullptr), localOut_(localOut ? BindOutput(localOut) : nullptr),
       westIn_(westIn ? BindInput(westIn) : nullptr), westOut_(westOut ? BindOutput(westOut) : nullptr),
       eastIn_(eastIn ? BindInput(eastIn) : nullptr), eastOut_(eastOut ? BindOutput(eastOut) : nullptr),
       northIn_(northIn ? BindInput(northIn) : nullptr), northOut_(northOut ? BindOutput(northOut) : nullptr),
       southIn_(southIn ? BindInput(southIn) : nullptr), southOut_(southOut ? BindOutput(southOut) : nullptr),
-      id_(id)
+      id_(id), fakeIterations_(fakeIterations)
 {
     GFSIM_ASSERT(id >= 0 && id < kNodes);
     GFSIM_ASSERT(localIn_ && localOut_);
@@ -61,6 +62,7 @@ Direction MeshNode::Grant(Direction output, Direction last,
 
 void MeshNode::Work()
 {
+    EvaluateFakeInstruction();
     // Snapshot each input head before committing any grant.
     const auto localRequest = (!localIn_ || localIn_->Empty()) ? Direction::None : Route(id_, localIn_->Peek().destination);
     const auto westRequest = (!westIn_ || westIn_->Empty()) ? Direction::None : Route(id_, westIn_->Peek().destination);
@@ -268,6 +270,27 @@ void MeshNode::Work()
     WorkChildren();
 }
 
+std::uint64_t MeshNode::FakeAlu(std::uint64_t state, std::uint32_t iterations)
+{
+    // A dependent integer chain models expensive host evaluation, not guest
+    // cycle latency. The returned state is committed and checked by the bench.
+    for (std::uint32_t i = 0; i < iterations; ++i) {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        state *= UINT64_C(0x2545f4914f6cdd1d);
+    }
+    return state;
+}
+
+void MeshNode::EvaluateFakeInstruction()
+{
+    if (fakeIterations_ == 0) return;
+    nextFakeState_ = FakeAlu(fakeState_, fakeIterations_);
+    fakeRounds_ += fakeIterations_;
+    // Synthetic load alone does not count as network progress or mask deadlock.
+}
+
 void MeshNode::LogTransfer(int packetId, const std::string& output)
 {
     if (auto* trace = Trace()) {
@@ -281,6 +304,7 @@ void MeshNode::LogTransfer(int packetId, const std::string& output)
 
 void MeshNode::Xfer()
 {
+    fakeState_ = nextFakeState_;
     AdvanceInnerQueues();
     XferChildren();
 }
@@ -293,6 +317,9 @@ void MeshNode::Reset()
     lastNorth_ = Direction::None;
     lastSouth_ = Direction::None;
     forwarded_ = 0;
+    fakeState_ = UINT64_C(0x9e3779b97f4a7c15) ^ static_cast<std::uint64_t>(id_);
+    nextFakeState_ = fakeState_;
+    fakeRounds_ = 0;
     ResetInnerQueues();
     ResetChildren();
 }
@@ -300,6 +327,10 @@ void MeshNode::Reset()
 void MeshNode::ReportStat()
 {
     Report().ReportVal(Name() + " inter-node hops", forwarded_);
+    if (fakeIterations_ != 0) {
+        Report().ReportVal(Name() + " fake ALU rounds (since reset)", fakeRounds_);
+        Report().ReportVal(Name() + " fake ALU checksum", fakeState_);
+    }
     ReportChildren();
 }
 

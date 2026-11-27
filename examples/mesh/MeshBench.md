@@ -62,3 +62,11 @@ ctest --test-dir build -R '^mesh_example$' --output-on-failure
 不变；134 条链路和 40 条 deliver 队列跟随生产节点，40 条 inject 队列
 跟随接收节点推进。节点在 Work 中检查 Full，不在 Xfer/Reset 中缓存容量。
 整个系统保留 Work 完成和 Xfer 完成两个阶段屏障，无额外的队列阶段屏障。
+
+## 重计算对照
+
+`MeshBench(system, reverseNodeOrder, fakeIterations)` 的第三个参数控制每个
+节点每拍 fake ALU 的宿主计算轮数，默认 0。FakeChecksum 汇总节点已提交的
+校验和，FakeRounds 汇总实际执行的轮数；两者在系统空闲时查询。
+网络拓扑、时序和终止条件保持不变。使用独立的 `mesh_heavy_benchmark`
+执行强度/线程数扫描，参见 [HeavyMesh](HeavyMesh.md)。

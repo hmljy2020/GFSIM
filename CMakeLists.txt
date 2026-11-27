@@ -27,6 +27,8 @@ target_link_libraries(mesh_example_model PUBLIC gfsim)
 target_include_directories(mesh_example_model PUBLIC examples/mesh)
 add_executable(mesh_example examples/mesh/main.cpp)
 target_link_libraries(mesh_example PRIVATE mesh_example_model)
+add_executable(mesh_heavy_benchmark examples/mesh/heavy_benchmark.cpp)
+target_link_libraries(mesh_heavy_benchmark PRIVATE mesh_example_model)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -41,6 +43,10 @@ if(BUILD_TESTING)
     set_tests_properties(parallel_subtree PROPERTIES TIMEOUT 60)
     find_program(MESH_PYTHON3 python3)
     if(MESH_PYTHON3)
+        add_test(NAME heavy_mesh_summary COMMAND ${MESH_PYTHON3}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/examples/mesh/summarize_heavy.py
+                 ${CMAKE_CURRENT_BINARY_DIR}/heavy-mesh-smoke.csv)
+        set_tests_properties(heavy_mesh_summary PROPERTIES DEPENDS heavy_mesh_benchmark)
         add_test(NAME parallel_trace_json COMMAND ${MESH_PYTHON3}
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/parallel/check_trace.py
                  ${CMAKE_CURRENT_BINARY_DIR}/parallel-phases.json
@@ -52,6 +58,13 @@ if(BUILD_TESTING)
     add_executable(mesh_example_test tests/examples/test_mesh.cpp)
     target_link_libraries(mesh_example_test PRIVATE mesh_example_model)
     add_test(NAME mesh_example COMMAND mesh_example_test ${CMAKE_CURRENT_BINARY_DIR}/mesh.dot)
+
+    add_executable(heavy_mesh_test tests/examples/test_heavy_mesh.cpp)
+    target_link_libraries(heavy_mesh_test PRIVATE mesh_example_model)
+    add_test(NAME heavy_mesh COMMAND heavy_mesh_test)
+    add_test(NAME heavy_mesh_benchmark COMMAND mesh_heavy_benchmark
+             --iterations 0,19 --workers 0,1,2,4 --batches 2 --repeats 1 --warmup 0
+             --output ${CMAKE_CURRENT_BINARY_DIR}/heavy-mesh-smoke.csv)
 
     add_executable(counter_exchange_test tests/examples/test_counter_exchange.cpp)
     target_link_libraries(counter_exchange_test PRIVATE counter_example_model)

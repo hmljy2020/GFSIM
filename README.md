@@ -44,3 +44,8 @@ not query queues; queue readiness is checked during Work. See the [parallel exec
 contract](docs/API/SimSys.md#parallel-child-subtrees) and
 [queue access restrictions](docs/API/SimQueue.md#parallel-access-contract).
 CTest compares the Mesh's serial baseline against 1, 2, and 4 workers every cycle.
+
+The [heavy Mesh benchmark](examples/mesh/HeavyMesh.md) adds configurable,
+deterministic host ALU work to each node while preserving packet timing. Build
+`mesh_heavy_benchmark` in Release mode to compare serial and parallel execution
+across computation intensities; raw runs are written to CSV.
