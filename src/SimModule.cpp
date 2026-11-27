@@ -2,6 +2,14 @@
 
 namespace gfsim {
 
+void SimModule::AdvanceInnerQueues()
+{
+    SimSystem* const system = GetSim();
+    for (const auto& queue : innerQueues_) {
+        if (!system || !system->DelegatesQueue(queue.get())) queue->Work();
+    }
+}
+
 void SimModule::WorkChildren()
 {
     if (GetSim() && GetSim()->ExecuteChildren(this, true)) return;

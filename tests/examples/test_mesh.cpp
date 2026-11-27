@@ -145,6 +145,27 @@ void TestArbitrationAndBackpressure(std::size_t workers)
     GFSIM_ASSERT(log.str().find("[node_9.blocked][DEBUG] link_9_to_10") != std::string::npos);
 }
 
+void TestCapacityAtWork(std::size_t workers)
+{
+    Fixture f(true, workers);
+    for (int i = 0; i < kNodes; ++i) f.queues.at("inject_" + std::to_string(i))->setStall();
+    auto& input = *f.queues.at("link_8_to_9");
+    auto& output = *f.queues.at("link_9_to_10");
+    const auto packet = std::make_shared<Packet>(Packet{0, 8, 19, 1});
+    input.Write(packet);
+    input.Work();
+    // Fill the output after Build/Reset, without a node Xfer capacity sample.
+    output.Write(std::make_shared<Packet>(Packet{1, 8, 19, 2}));
+    output.Write(std::make_shared<Packet>(Packet{2, 8, 19, 2}));
+    output.setStall();
+    f.sim.Step();
+    GFSIM_ASSERT(input.Front() == packet && packet->hops == 1 && output.SizeW() == 2);
+    // An idle queue reset makes space immediately for the next Work check.
+    output.Reset();
+    f.sim.Step();
+    GFSIM_ASSERT(input.Empty() && output.Front() == packet && packet->hops == 2);
+}
+
 void TestWrongDelivery(std::size_t workers)
 {
     Fixture f(false, workers);
@@ -230,6 +251,7 @@ int main(int argc, char** argv)
     TestParallelEquivalence();
     for (std::size_t workers : {0u, 1u, 2u, 4u}) {
         TestArbitrationAndBackpressure(workers);
+        TestCapacityAtWork(workers);
         TestWrongDelivery(workers);
         TestDeadlock(workers);
     }

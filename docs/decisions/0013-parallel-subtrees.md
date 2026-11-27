@@ -1,5 +1,9 @@
 # 0013: Parallel execution of fixed child subtrees
 
+Queue execution assignment and the Xfer access contract below are updated by
+[decision 0014](0014-queue-task-affinity.md). Ownership still controls lifetime
+and topology, but no longer fixes the advancement thread.
+
 ## Decision
 
 Provide `SetWorkerCount(count)` and `SetParallelChildren(parent)` before Build.

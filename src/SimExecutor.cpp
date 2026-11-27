@@ -22,8 +22,27 @@ SimExecutionPlan::SimExecutionPlan(SimModule* split, std::size_t count)
     : parent(split), workers(std::min(count, split->Submodules().size()))
 {
     for (std::size_t i = 0; i < split->Submodules().size(); ++i) {
-        workers[i % workers.size()].push_back(Task{split->Submodules()[i].get(), i + 1});
+        SimModule* root = split->Submodules()[i].get();
+        workers[i % workers.size()].push_back(Task{root, i + 1, {}});
+        IndexSubtree(root, i + 1);
     }
+}
+
+void SimExecutionPlan::IndexSubtree(const SimModule* module, std::size_t task)
+{
+    taskIds_.emplace(module, task);
+    for (const auto& child : module->Submodules()) IndexSubtree(child.get(), task);
+}
+
+bool SimExecutionPlan::AssignQueue(SimObj* queue, const SimModule* producer,
+                                 const SimModule* consumer)
+{
+    auto endpoint = taskIds_.find(producer);
+    if (endpoint == taskIds_.end()) endpoint = taskIds_.find(consumer);
+    if (endpoint == taskIds_.end()) return false;
+    const std::size_t index = endpoint->second - 1;
+    workers[index % workers.size()][index / workers.size()].queues.push_back(queue);
+    return true;
 }
 
 SimExecutor::SimExecutor(SimSystem* system, SimExecutionPlan plan, ThreadFactory launch)
@@ -80,7 +99,12 @@ void SimExecutor::Worker(std::size_t index)
             for (const auto& task : plan_.workers[index]) {
                 SimTaskScope scope(system_, phase, task.id);
                 if (phase == SimPhase::Work) task.root->Work();
-                else task.root->Xfer();
+                else {
+                    // Boundary publication never overlaps module Work. Xfer
+                    // commits local state and must not query queue state.
+                    for (SimObj* queue : task.queues) queue->Work();
+                    task.root->Xfer();
+                }
             }
         } catch (...) {
             failure = std::current_exception();

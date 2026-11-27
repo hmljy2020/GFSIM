@@ -54,8 +54,9 @@ Call each helper exactly once in its lifecycle phase even if local work is
 blocked: put early-return readiness checks in a local helper, then call
 `WorkChildren()` unconditionally. Do not call child lifecycle methods directly
 in addition to the traversal helpers. Keep `AdvanceInnerQueues()` before
-`XferChildren()` so queues owned by the split parent finish advancing before
-workers enter Xfer.
+`XferChildren()`. The advancement helper handles queues that remain local and
+skips queues delegated to workers; it does not promise that owned queues have
+already advanced when it returns.
 
 Generated GFIR functions map to ordinary calls, with explicit arguments; they
 do not create boundary ports. Generate only existing ports, allow each output
@@ -65,9 +66,15 @@ pending state, and commit pending state in Xfer; Reset clears both. Do not read
 another module's mutable state concurrently. Queue transfer remains the
 communication mechanism between modules.
 
-A subtree owns its mutable module state. A queue advances on its owner's
-thread, which need not be the producer's or consumer's thread. Xfer code may
-inspect a queue only if that owner's advancement is ordered before the read
-(or the operations are otherwise confined to one sequential subtree). For
-example, Mesh nodes sample parent-owned queue capacity after the parent's
-advancement; reading a sibling-owned queue during parallel Xfer is unsafe.
+A subtree owns its mutable module state. Physical queue ownership determines
+lifetime, Reset, and topology; execution assignment is computed from its producer
+and consumer subtrees. A worker advances its assigned queues in Xfer, independently
+of other worker tasks and owner callbacks. Module Xfer must only commit private
+state and call lifecycle helpers. Do not query queues or read another module's
+state in Xfer. Check input readiness and output Full() during Work, where queue
+admission is independent of concurrent consumer Pops. Remove capacity caches
+sampled during Xfer or Reset; the queue already maintains the admission count.
+
+Within each system phase independent worker tasks may overlap, but module Work
+and queue publication never overlap. SimQueue::Work() is the legacy publication
+entry point called during system Xfer, not an ordinary module Work task.

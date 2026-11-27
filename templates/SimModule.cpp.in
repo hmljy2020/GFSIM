@@ -37,9 +37,10 @@ void @MODULE_NAME@::Work()
 
 void @MODULE_NAME@::Xfer()
 {
-    // Optional phase-boundary bookkeeping goes before queue advancement.
+    // Commit private state only; queue readiness belongs in Work().
     state_ = nextState_;
-    // Only read another owner's queues here if advancement is ordered before us.
+    // Do not query queues here: their advancement may run on other workers.
+    // The helper skips queues delegated to those workers.
     AdvanceInnerQueues();
     XferChildren();
 }

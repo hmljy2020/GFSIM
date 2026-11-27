@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <unordered_set>
 #include <vector>
 
 #include "Logger.h"
@@ -142,6 +143,7 @@ private:
     friend class SimModule;
     void RegisterTraceQueue(TraceableQueue& queue, const std::string& path);
     bool ExecuteChildren(SimModule* parent, bool work);
+    bool DelegatesQueue(const SimObj* queue) const;
     void PublishTermination();
 
     std::uint64_t cycles_ = 0;
@@ -173,6 +175,7 @@ private:
     std::unique_ptr<SimTrace> trace_;
     std::vector<std::shared_ptr<SimObj>> modules_;
     std::unique_ptr<SimExecutor> executor_;
+    std::unordered_set<const SimObj*> delegatedQueues_;
 };
 
 // Short name for the simulation system.

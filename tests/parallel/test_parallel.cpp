@@ -57,6 +57,30 @@ private:
     unsigned generation_ = 0;
 };
 
+// Queue instrumentation is read by the controller only after a phase barrier.
+class ObservedQueue final : public SimQueue<RingPacket> {
+public:
+    explicit ObservedQueue(std::string name) : SimQueue<RingPacket>(std::move(name)) {}
+    void Work() override {
+        thread_ = std::this_thread::get_id();
+        if (hook_) hook_();
+        SimQueue<RingPacket>::Work();
+        ++advances_;
+    }
+    void Reset() override {
+        SimQueue<RingPacket>::Reset();
+        advances_ = 0;
+        thread_ = std::thread::id();
+    }
+    void SetHook(std::function<void()> hook) { hook_ = std::move(hook); }
+    std::thread::id Thread() const { return thread_; }
+    unsigned Advances() const { return advances_; }
+private:
+    std::function<void()> hook_;
+    std::thread::id thread_;
+    unsigned advances_ = 0;
+};
+
 void Configuration()
 {
     SimSystem empty;
@@ -380,6 +404,91 @@ void Queues(const std::string& tracePath, const std::string& dotPath)
         GFSIM_ASSERT(!sim.IsDeadlocked());
     }
 }
+void DelegatedQueues(const std::string& dotPath)
+{
+    using Modules = std::vector<std::shared_ptr<SimModule>>;
+    using Queues = std::vector<std::shared_ptr<SimQueue<RingPacket>>>;
+    for (std::size_t workers : {1u, 2u, 4u}) {
+        // 0: parent ownership; 1: external root, main-thread producer;
+        // 2: physical owners and producers belong to different worker subtrees.
+        for (int placement = 0; placement < 3; ++placement) {
+            SimSystem sim;
+            auto q0 = std::make_shared<ObservedQueue>("to_b");
+            auto q1 = std::make_shared<ObservedQueue>("to_a");
+            std::shared_ptr<ObservedQueue> q2;
+            auto a = std::make_shared<RingStage>("a", q1.get(), q0, false);
+            auto b = std::make_shared<RingStage>("b", q0.get(), q1, false);
+            std::shared_ptr<ProbeModule> root;
+            if (placement == 0) {
+                root = std::make_shared<ProbeModule>("root", &sim, Modules{a, b}, Queues{q0, q1});
+            } else if (placement == 1) {
+                q2 = std::make_shared<ObservedQueue>("main_loop");
+                auto nested = std::make_shared<ProbeModule>("nested", nullptr, Modules{a});
+                root = std::make_shared<ProbeModule>("root", &sim, Modules{nested});
+                auto mainStage = std::make_shared<RingStage>("main_stage", q2.get(), q2, false);
+                auto outside = std::make_shared<ProbeModule>("outside", &sim, Modules{b, mainStage}, Queues{q0, q1, q2});
+                // The queue owner runs before the split in both phases.
+                sim.AddModule(outside);
+            } else {
+                auto branchA = std::make_shared<ProbeModule>("branch_a", nullptr, Modules{a}, Queues{q1});
+                auto branchB = std::make_shared<ProbeModule>("branch_b", nullptr, Modules{b}, Queues{q0});
+                root = std::make_shared<ProbeModule>("root", &sim, Modules{branchA, branchB});
+            }
+            sim.AddModule(root);
+            sim.SetParallelChildren(root.get());
+            sim.SetWorkerCount(workers);
+            sim.SetDeadlockThreshold(8);
+            sim.Build();
+            sim.SaveDot(dotPath + ".delegated" + std::to_string(placement) + ".dot");
+            Gate gate;
+            for (int pass = 0; pass < 2; ++pass) {
+                // Seed while idle, temporarily disabling the parallel rendezvous.
+                q0->SetHook({}); q1->SetHook({});
+                auto packet = std::make_shared<RingPacket>(RingPacket{7, 0});
+                q1->Write(packet); q1->Work(); q1->Work();
+                q0->Write(std::make_shared<RingPacket>(RingPacket{99, 0}));
+                q0->Work(); q0->Work();
+                if (workers > 1 && placement != 1) {
+                    q0->SetHook([&] { gate.Meet(); });
+                    q1->SetHook([&] { gate.Meet(); });
+                }
+                sim.Step();
+                // The main-thread consumer in placement 1 has already popped
+                // q0 before a.Work(): same-cycle admission must still block.
+                GFSIM_ASSERT(q1->Front() == packet && packet->hops == 0);
+                GFSIM_ASSERT(q0->Thread() == a->WorkThread());
+                GFSIM_ASSERT(q1->Thread() == (placement == 1 ? a->WorkThread() : b->WorkThread()));
+                GFSIM_ASSERT(q0->Thread() != std::this_thread::get_id());
+                if (placement == 1) GFSIM_ASSERT(q2->Thread() == std::this_thread::get_id());
+                sim.Step();
+                GFSIM_ASSERT(q0->Snapshot().delays == std::vector<std::uint32_t>{1});
+                while (!sim.NeedTerminate()) sim.Step();
+                GFSIM_ASSERT(sim.Cycles() == 10 && packet->hops == 4);
+                GFSIM_ASSERT(q0->Advances() == sim.Cycles() + 2);
+                GFSIM_ASSERT(q1->Advances() == sim.Cycles() + 2);
+                if (placement == 1) GFSIM_ASSERT(q2->Advances() == sim.Cycles());
+                sim.Reset();
+                GFSIM_ASSERT(q0->Advances() == 0 && q1->Advances() == 0);
+            }
+            if (workers == 2 && placement == 0) {
+                q0->SetHook([&] {
+                    gate.Meet();
+                    sim.RequestTerminate("discard queue failure");
+                    throw std::runtime_error("queue advance failed");
+                });
+                q1->SetHook([&] { gate.Meet(); });
+                Expect<std::runtime_error>([&] { sim.Step(); });
+                GFSIM_ASSERT(q1->Advances() == 1 && !sim.NeedTerminate());
+                Expect<std::logic_error>([&] { sim.Step(); });
+                q0->SetHook({}); q1->SetHook({});
+                sim.Reset();
+                sim.Step();
+                GFSIM_ASSERT(q0->Advances() == 1 && q1->Advances() == 1);
+            }
+        }
+    }
+}
+
 } // namespace
 int main(int argc, char** argv)
 {
@@ -389,4 +498,5 @@ int main(int argc, char** argv)
     Termination();
     Failures();
     Queues(argv[2], argv[3]);
+    DelegatedQueues(argv[3]);
 }

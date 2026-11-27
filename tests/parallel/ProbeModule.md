@@ -2,7 +2,8 @@
 
 Adapted from the three SimModule templates. This zero-port test module registers
 its configured children during Build, with an exact object capacity equal to
-child count; it owns no queues. Hooks before and after child traversal let the
+child count plus optional RingPacket queue count. Optional physical queues are
+registered through AddInnerQueue; the probe still has no boundary ports. Hooks before and after child traversal let the
 fixture record lifecycle ordering, rendezvous independent workers, request
 termination, and inject ordinary/assertion/reset failures. Hooks are configured
 only while idle. Work and Xfer counters are private and reset to zero; hooks
@@ -22,3 +23,7 @@ aborts the phase as documented by the system API.
 `test_parallel.cpp` checks exact counts, nested ownership and traversal,
 concurrent phases, reset/thread reuse, complete logs, reports, and recovery.
 `check_trace.py` parses the trace JSON, lane count, escaped detail, and flow IDs.
+
+Delegation fixtures use optional queues to separate physical ownership from the
+producer/consumer task, including owners outside the selected root and owners
+on a different worker. Owner reset clears them regardless of advancement task.

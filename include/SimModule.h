@@ -106,12 +106,7 @@ protected:
         }
     }
 
-    void AdvanceInnerQueues()
-    {
-        for (const auto& queue : innerQueues_) {
-            queue->Work();
-        }
-    }
+    void AdvanceInnerQueues();
 
     void ResetInnerQueues()
     {

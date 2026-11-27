@@ -69,7 +69,7 @@ void MeshNode::Work()
     const auto southRequest = (!southIn_ || southIn_->Empty()) ? Direction::None : Route(id_, southIn_->Peek().destination);
 
     const auto localGrant = Grant(Direction::Local, lastLocal_, localRequest, westRequest, eastRequest, northRequest, southRequest);
-    if (localGrant != Direction::None && localAvailable_) {
+    if (localGrant != Direction::None && localOut_ && !localOut_->Full()) {
         std::shared_ptr<Packet> packet;
         switch (localGrant) {
         case Direction::Local:
@@ -107,7 +107,7 @@ void MeshNode::Work()
     }
 
     const auto westGrant = Grant(Direction::West, lastWest_, localRequest, westRequest, eastRequest, northRequest, southRequest);
-    if (westGrant != Direction::None && westAvailable_) {
+    if (westGrant != Direction::None && westOut_ && !westOut_->Full()) {
         std::shared_ptr<Packet> packet;
         switch (westGrant) {
         case Direction::Local:
@@ -147,7 +147,7 @@ void MeshNode::Work()
     }
 
     const auto eastGrant = Grant(Direction::East, lastEast_, localRequest, westRequest, eastRequest, northRequest, southRequest);
-    if (eastGrant != Direction::None && eastAvailable_) {
+    if (eastGrant != Direction::None && eastOut_ && !eastOut_->Full()) {
         std::shared_ptr<Packet> packet;
         switch (eastGrant) {
         case Direction::Local:
@@ -187,7 +187,7 @@ void MeshNode::Work()
     }
 
     const auto northGrant = Grant(Direction::North, lastNorth_, localRequest, westRequest, eastRequest, northRequest, southRequest);
-    if (northGrant != Direction::None && northAvailable_) {
+    if (northGrant != Direction::None && northOut_ && !northOut_->Full()) {
         std::shared_ptr<Packet> packet;
         switch (northGrant) {
         case Direction::Local:
@@ -227,7 +227,7 @@ void MeshNode::Work()
     }
 
     const auto southGrant = Grant(Direction::South, lastSouth_, localRequest, westRequest, eastRequest, northRequest, southRequest);
-    if (southGrant != Direction::None && southAvailable_) {
+    if (southGrant != Direction::None && southOut_ && !southOut_->Full()) {
         std::shared_ptr<Packet> packet;
         switch (southGrant) {
         case Direction::Local:
@@ -279,18 +279,8 @@ void MeshNode::LogTransfer(int packetId, const std::string& output)
     }
 }
 
-void MeshNode::SampleCapacity()
-{
-    localAvailable_ = localOut_ && !localOut_->Full();
-    westAvailable_ = westOut_ && !westOut_->Full();
-    eastAvailable_ = eastOut_ && !eastOut_->Full();
-    northAvailable_ = northOut_ && !northOut_->Full();
-    southAvailable_ = southOut_ && !southOut_->Full();
-}
-
 void MeshNode::Xfer()
 {
-    SampleCapacity();
     AdvanceInnerQueues();
     XferChildren();
 }
@@ -302,7 +292,6 @@ void MeshNode::Reset()
     lastEast_ = Direction::None;
     lastNorth_ = Direction::None;
     lastSouth_ = Direction::None;
-    SampleCapacity();
     forwarded_ = 0;
     ResetInnerQueues();
     ResetChildren();

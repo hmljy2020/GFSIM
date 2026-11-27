@@ -6,10 +6,12 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace gfsim {
 class SimModule;
+class SimObj;
 class SimSystem;
 
 enum class SimPhase { Work, Xfer };
@@ -34,10 +36,15 @@ struct SimExecutionPlan {
     struct Task {
         SimModule* root;
         std::size_t id;
+        std::vector<SimObj*> queues;
     };
     SimExecutionPlan(SimModule* parent, std::size_t workers);
+    bool AssignQueue(SimObj* queue, const SimModule* producer, const SimModule* consumer);
     SimModule* parent;
     std::vector<std::vector<Task>> workers;
+private:
+    void IndexSubtree(const SimModule* module, std::size_t task);
+    std::unordered_map<const SimModule*, std::size_t> taskIds_;
 };
 
 class SimExecutor {

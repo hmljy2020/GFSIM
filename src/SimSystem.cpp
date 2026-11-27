@@ -38,6 +38,11 @@ bool SimSystem::ExecuteChildren(SimModule* parent, bool work)
     return true;
 }
 
+bool SimSystem::DelegatesQueue(const SimObj* queue) const
+{
+    return executor_ && delegatedQueues_.count(queue) != 0;
+}
+
 void SimSystem::AddModule(std::shared_ptr<SimObj> module)
 {
     if (buildAttempted_) {
@@ -129,20 +134,26 @@ void SimSystem::Build()
         std::size_t owners = 0;
         std::size_t producers = 0;
         std::size_t consumers = 0;
+        const SimModule* producer = nullptr;
+        const SimModule* consumer = nullptr;
     };
     std::unordered_map<const SimObj*, QueueUse> queues;
+    std::vector<SimObj*> queueOrder;
     bool foundParallelParent = false;
     std::function<void(const SimModule*)> collect;
     collect = [&](const SimModule* parent) {
         if (parent == parallelParent_) foundParallelParent = true;
         for (const auto& queue : parent->innerQueues_) {
             ++queues[queue.get()].owners;
+            queueOrder.push_back(queue.get());
         }
         for (const SimObj* queue : parent->outputs_) {
             ++queues[queue].producers;
+            queues[queue].producer = parent;
         }
         for (const SimObj* queue : parent->inputs_) {
             ++queues[queue].consumers;
+            queues[queue].consumer = parent;
         }
         for (const auto& child : parent->submodules_) {
             collect(child.get());
@@ -183,9 +194,17 @@ void SimSystem::Build()
     try {
         Reset();
         if (parallelParent_) {
-            executor_.reset(new SimExecutor(this, SimExecutionPlan(parallelParent_, workerCount_)));
+            SimExecutionPlan plan(parallelParent_, workerCount_);
+            for (SimObj* queue : queueOrder) {
+                const auto& use = queues.at(queue);
+                if (plan.AssignQueue(queue, use.producer, use.consumer)) {
+                    delegatedQueues_.insert(queue);
+                }
+            }
+            executor_.reset(new SimExecutor(this, std::move(plan)));
         }
     } catch (...) {
+        delegatedQueues_.clear();
         built_ = false;
         throw;
     }

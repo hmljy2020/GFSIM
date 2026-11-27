@@ -1,13 +1,13 @@
 #include "RingStage.h"
 namespace parallel_test {
 RingStage::RingStage(std::string name, gfsim::SimQueue<RingPacket>* input,
-                     std::shared_ptr<gfsim::SimQueue<RingPacket>> output)
+                     std::shared_ptr<gfsim::SimQueue<RingPacket>> output, bool ownOutput)
     : SimModule(std::move(name)), input_(BindInput(input)),
-      output_(BindOutput(output.get())), owned_(std::move(output)) {}
+      output_(BindOutput(output.get())), owned_(ownOutput ? std::move(output) : nullptr) {}
 void RingStage::Build()
 {
-    SetObjectCapacity(1);
-    AddInnerQueue(owned_);
+    SetObjectCapacity(owned_ ? 1 : 0);
+    if (owned_) AddInnerQueue(owned_);
     output_->InitMaxSize(1);
     output_->Setlatency(2);
     output_->SetTraceFormatter([](const RingPacket& packet) {
@@ -39,11 +39,17 @@ void RingStage::Transfer()
     GetSim()->MarkProgress();
     Log().Debug(Name(), "forward") << "hops=" << hops;
 }
-void RingStage::Work() { Transfer(); WorkChildren(); }
+void RingStage::Work()
+{
+    workThread_ = std::this_thread::get_id();
+    Transfer();
+    WorkChildren();
+}
 void RingStage::Xfer() { AdvanceInnerQueues(); XferChildren(); }
 void RingStage::Reset()
 {
     transfers_ = blocked_ = 0;
+    workThread_ = std::thread::id();
     ResetInnerQueues();
     ResetChildren();
 }

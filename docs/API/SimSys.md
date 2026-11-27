@@ -95,7 +95,8 @@ one worker still uses the same phase and termination contract as multiple worker
 
 Workers are created after build validation and initial reset, reused across
 Reset, and joined before the system destroys its modules and queues. The split
-parent and its queues execute on the main thread. Its child traversal helpers
+parent executes on the main thread. Queue advancement is assigned independently
+of physical ownership as described below. Its child traversal helpers
 wait for all dispatched tasks. All roots finish Work before any root starts
 Xfer; all Xfer calls finish before the next cycle. Within a subtree, traversal
 remains sequential. A testbench still drives stimuli before its children and
@@ -124,3 +125,30 @@ configuration, trace setup/close, graph export, or destruction concurrently
 with model execution. Reporters and guest memory are not made thread-safe by
 the executor. See [queue restrictions](SimQueue.md#parallel-access-contract)
 and [decision 0013](../decisions/0013-parallel-subtrees.md).
+
+
+### Queue assignment within the existing Xfer phase
+
+Build maps each module below a split child to that child's stable task ID. Each
+physical queue follows its producer task; if the producer is outside the worker
+subtrees, it follows its consumer task. If neither endpoint is in a worker
+subtree, the queue stays on the existing owner traversal. Queues are appended
+in structural owner/registration order, making assignment independent of hash
+iteration order. Assignment is fixed until system destruction and reused by
+Reset. No new public configuration is required.
+
+Each worker Xfer task first advances its assigned queues, then calls its subtree
+root's Xfer. `AdvanceInnerQueues()` skips these delegated queues so each queue
+advances exactly once. Physical ownership, Objects(), DOT, trace paths, and
+owner-based Reset remain unchanged. A parent may own a queue that executes in
+another root's worker subtree. Queue failures follow the same exception/reset
+contract as module failures.
+
+Module Xfer commits private state and must not inspect queue capacity/contents
+or other modules' concurrently committed state. Perform those decisions during
+Work. There is no additional queue-publication barrier: all module Work finishes
+before any queue advancement, and every queue and module Xfer finishes before
+the next Work. In particular, the legacy queue method named Work performs its
+publication in the system Xfer phase; it cannot run concurrently with module
+Work. Parent pre/post traversal and testbench stimulus/check ordering are still
+preserved. See [decision 0014](../decisions/0014-queue-task-affinity.md).

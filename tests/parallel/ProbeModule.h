@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include "SimModule.h"
+#include "RingStage.h"
 
 namespace parallel_test {
 // Adapted from templates/SimModule.{h,cpp,md}.in; intentionally has no ports.
@@ -8,7 +9,8 @@ class ProbeModule final : public gfsim::SimModule {
 public:
     using Hook = std::function<void(ProbeModule&, bool, bool)>;
     ProbeModule(std::string name, gfsim::SimSystem* system = nullptr,
-                std::vector<std::shared_ptr<gfsim::SimModule>> children = {});
+                std::vector<std::shared_ptr<gfsim::SimModule>> children = {},
+                std::vector<std::shared_ptr<gfsim::SimQueue<RingPacket>>> queues = {});
     void Build() override;
     void Work() override;
     void Xfer() override;
@@ -21,6 +23,7 @@ public:
 private:
     void Observe(bool work, bool after);
     std::vector<std::shared_ptr<gfsim::SimModule>> children_;
+    std::vector<std::shared_ptr<gfsim::SimQueue<RingPacket>>> queues_;
     Hook hook_;
     std::function<void()> resetHook_;
     std::uint64_t works_ = 0;

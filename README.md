@@ -38,7 +38,9 @@ counts, or `./build/mesh_example --timings build/mesh-timings.tsv` for the per-p
 To execute independent child subtrees on persistent workers, call
 `system.SetWorkerCount(4)` and `system.SetParallelChildren(parent)` before
 `Build()`. Work and Xfer each end with a barrier; the selected parent's own
-logic and queues stay on the main thread. See the [parallel execution
+logic stays on the main thread; queue advancement follows producer/consumer subtrees
+independently of physical ownership. Module Xfer commits private state and does
+not query queues; queue readiness is checked during Work. See the [parallel execution
 contract](docs/API/SimSys.md#parallel-child-subtrees) and
 [queue access restrictions](docs/API/SimQueue.md#parallel-access-contract).
 CTest compares the Mesh's serial baseline against 1, 2, and 4 workers every cycle.

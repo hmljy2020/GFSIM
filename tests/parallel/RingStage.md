@@ -2,10 +2,12 @@
 
 Adapted from the three SimModule templates. One INPUT `SimQueue<RingPacket>*`
 and one OUTPUT of the same type bind in the constructor. Build declares one
-object and owns the output queue through AddInnerQueue, then builds queues and
-children. Each queue has capacity 1, latency 2, and a formatter `id:hops`.
+object and owns the output queue through AddInnerQueue by default, then builds
+queues and children. With ownOutput=false it declares zero objects and the
+fixture supplies physical ownership through a ProbeModule. Each queue has capacity 1, latency 2, and a formatter `id:hops`.
 The two-stage fixture connects a.to_b to b's input and b.to_a to a's input;
-each worker advances its own queue. No cross-owner reads occur in Xfer.
+each worker advances its assigned producer queue. Physical ownership may be
+elsewhere in the delegation tests. No cross-owner reads occur in Xfer.
 
 The fixture is the initial packet source, allocating each RingPacket once with
 make_shared while simulation is idle. A stage peeks the shared handle and checks
@@ -29,3 +31,7 @@ Tests cover cross-thread identity, full-at-cycle-start admission after a
 concurrent pop, exactly one queue advancement per cycle, staged delays, cyclic
 flow, termination at cycle 10, independent owners, reset/replay, logs, reports,
 trace JSON, and DOT ownership/port edges.
+
+Delegation tests instrument queue advancement to check actual thread identity,
+parallel overlap, exactly-once publication, reset reuse, and propagation of
+queue-advance exceptions. WorkThread records the stage executor for comparison.

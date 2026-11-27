@@ -25,32 +25,26 @@ private:
     PURE static Direction Route(int node, int destination);
     PURE static Direction Grant(Direction output, Direction last,
         Direction local, Direction west, Direction east, Direction north, Direction south);
-    void SampleCapacity();
     void LogTransfer(int packetId, const std::string& output);
 
     INPUT gfsim::SimQueue<Packet>* localIn_;
     OUTPUT gfsim::SimQueue<Packet>* localOut_;
-    bool localAvailable_ = false;
     Direction lastLocal_ = Direction::None;
 
     INPUT gfsim::SimQueue<Packet>* westIn_;
     OUTPUT gfsim::SimQueue<Packet>* westOut_;
-    bool westAvailable_ = false;
     Direction lastWest_ = Direction::None;
 
     INPUT gfsim::SimQueue<Packet>* eastIn_;
     OUTPUT gfsim::SimQueue<Packet>* eastOut_;
-    bool eastAvailable_ = false;
     Direction lastEast_ = Direction::None;
 
     INPUT gfsim::SimQueue<Packet>* northIn_;
     OUTPUT gfsim::SimQueue<Packet>* northOut_;
-    bool northAvailable_ = false;
     Direction lastNorth_ = Direction::None;
 
     INPUT gfsim::SimQueue<Packet>* southIn_;
     OUTPUT gfsim::SimQueue<Packet>* southOut_;
-    bool southAvailable_ = false;
     Direction lastSouth_ = Direction::None;
 
     int id_;

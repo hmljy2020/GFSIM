@@ -1,11 +1,14 @@
 #include "ProbeModule.h"
 namespace parallel_test {
 ProbeModule::ProbeModule(std::string name, gfsim::SimSystem* system,
-                         std::vector<std::shared_ptr<gfsim::SimModule>> children)
-    : SimModule(std::move(name), system), children_(std::move(children)) {}
+                         std::vector<std::shared_ptr<gfsim::SimModule>> children,
+                         std::vector<std::shared_ptr<gfsim::SimQueue<RingPacket>>> queues)
+    : SimModule(std::move(name), system), children_(std::move(children)),
+      queues_(std::move(queues)) {}
 void ProbeModule::Build()
 {
-    SetObjectCapacity(children_.size());
+    SetObjectCapacity(children_.size() + queues_.size());
+    for (const auto& queue : queues_) AddInnerQueue(queue);
     for (const auto& child : children_) AddSubmodule(child);
     BuildInnerQueues();
     BuildChildren();

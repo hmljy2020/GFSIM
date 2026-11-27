@@ -20,7 +20,6 @@ private:
     PURE static Direction Route(int node, int destination);
     PURE static Direction Grant(Direction output, Direction last,
 $requests);
-    void SampleCapacity();
     void LogTransfer(int packetId, const std::string& output);
 
 $members

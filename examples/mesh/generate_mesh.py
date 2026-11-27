@@ -29,7 +29,7 @@ def output_block(directions, out):
     winner = f"{port}Grant"
     lines = [
         f"    const auto {winner} = Grant(Direction::{out}, last{out}_, {requests});",
-        f"    if ({winner} != Direction::None && {port}Available_) {{",
+        f"    if ({winner} != Direction::None && {port}Out_ && !{port}Out_->Full()) {{",
         "        std::shared_ptr<Packet> packet;",
         f"        switch ({winner}) {{",
     ]
@@ -62,7 +62,7 @@ def router_files():
     requests = "        " + ", ".join(f"Direction {p}" for p in ports)
     members = "\n\n".join(
         f"    INPUT gfsim::SimQueue<Packet>* {p}In_;\n    OUTPUT gfsim::SimQueue<Packet>* {p}Out_;\n"
-        f"    bool {p}Available_ = false;\n    Direction last{d}_ = Direction::None;"
+        f"    Direction last{d}_ = Direction::None;"
         for d, p in zip(directions, ports))
     header = render("MeshRouter.h.in", name=name, parameters=parameters,
                     requests=requests, members=members)
@@ -77,7 +77,6 @@ def router_files():
         read_inputs="\n".join(f"    const auto {p}Request = (!{p}In_ || {p}In_->Empty()) ? Direction::None"
                               f" : Route(id_, {p}In_->Peek().destination);" for p in ports),
         output_blocks="\n\n".join(output_block(directions, d) for d in directions),
-        samples="\n".join(f"    {p}Available_ = {p}Out_ && !{p}Out_->Full();" for p in ports),
         reset="\n".join(f"    last{d}_ = Direction::None;" for d in directions))
     stem = name
     return {stem + ".h": BANNER + header, stem + ".cpp": BANNER + source}

@@ -62,14 +62,8 @@ void ${name}::LogTransfer(int packetId, const std::string& output)
     }
 }
 
-void ${name}::SampleCapacity()
-{
-$samples
-}
-
 void ${name}::Xfer()
 {
-    SampleCapacity();
     AdvanceInnerQueues();
     XferChildren();
 }
@@ -77,7 +71,6 @@ void ${name}::Xfer()
 void ${name}::Reset()
 {
 $reset
-    SampleCapacity();
     forwarded_ = 0;
     ResetInnerQueues();
     ResetChildren();
