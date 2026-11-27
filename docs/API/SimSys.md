@@ -75,3 +75,52 @@ int main()
     return counter->count == 1 && system.Cycles() == 1 ? 0 : 1;
 }
 ```
+
+## Parallel child subtrees
+
+Configure execution before `Build()`:
+
+| Method | Contract |
+| --- | --- |
+| `void SetWorkerCount(std::size_t count)` | Positive worker count, default 1. Values greater than 1 require a split parent. |
+| `void SetParallelChildren(SimModule* parent)` | Non-null, non-owning pointer to a module in this system's built hierarchy whose `GetSim()` returns this system. |
+
+Both setters reject changes once Build has started, including after a failed
+Build. The parent can be nested and must be available to the application before
+Build. Without a split, traversal retains its serial behavior. With a split,
+each direct child is one complete task subtree, assigned in registration order
+to worker `childIndex % min(workerCount, childCount)`. Each worker's tasks run in
+registration order. Zero children means zero workers and an empty dispatch;
+one worker still uses the same phase and termination contract as multiple workers.
+
+Workers are created after build validation and initial reset, reused across
+Reset, and joined before the system destroys its modules and queues. The split
+parent and its queues execute on the main thread. Its child traversal helpers
+wait for all dispatched tasks. All roots finish Work before any root starts
+Xfer; all Xfer calls finish before the next cycle. Within a subtree, traversal
+remains sequential. A testbench still drives stimuli before its children and
+checks outputs after they finish.
+
+With a split configured, termination requests during Step take effect at the
+end of the cycle, after Xfer and trace capture. `NeedTerminate()` and
+`TerminationReason()` expose only the previously published state during the
+cycle. Choose the reason by Work before Xfer, then lowest task ID: main thread
+is 0, direct children are 1..N independently of worker count. Within that
+phase/task, keep the first request. Requests outside Step and systems without a
+split retain immediate termination behavior. Useful work can call
+`MarkProgress()` concurrently; its relaxed atomic flag does not synchronize
+model data. The phase barriers provide that synchronization.
+
+An exception in a worker skips that worker's remaining tasks in the batch. All
+other workers finish before the first recorded exception is rethrown on the
+main thread. Work failure prevents Xfer. Any failed parallel Step requires a
+successful Reset before further stepping; pending termination requests are
+discarded. Reset does not roll back guest memory or external side effects.
+Failed Reset leaves the execution failure state set. Serial exception behavior
+is unchanged. Partial worker creation is cleaned up before Build throws.
+
+The application owns the control thread: do not call Step, Reset, ReportStat,
+configuration, trace setup/close, graph export, or destruction concurrently
+with model execution. Reporters and guest memory are not made thread-safe by
+the executor. See [queue restrictions](SimQueue.md#parallel-access-contract)
+and [decision 0013](../decisions/0013-parallel-subtrees.md).

@@ -44,3 +44,30 @@ Register root modules with `SimSystem` before build. Physical queues must be own
 See [`tests/simmodule/test_simmodule.cpp`](../../tests/simmodule/test_simmodule.cpp) for a parent with two children and distinct output types, and [decision 0002](../decisions/0002-simmodule-template.md) for the ownership contract.
 
 After `Build()`, `SimSystem::WriteDot()` renders the module hierarchy and bound queues; see the [DOT graph API](SimGraph.md).
+
+## Parallel traversal and generated models
+
+`WorkChildren()` and `XferChildren()` are out-of-line dispatch points. At the
+configured split parent they run direct child subtrees on persistent workers
+and wait for completion. Everywhere else they recurse in registration order.
+Call each helper exactly once in its lifecycle phase even if local work is
+blocked: put early-return readiness checks in a local helper, then call
+`WorkChildren()` unconditionally. Do not call child lifecycle methods directly
+in addition to the traversal helpers. Keep `AdvanceInnerQueues()` before
+`XferChildren()` so queues owned by the split parent finish advancing before
+workers enter Xfer.
+
+Generated GFIR functions map to ordinary calls, with explicit arguments; they
+do not create boundary ports. Generate only existing ports, allow each output
+its own type, and bind optional non-null endpoints in the constructor. Use
+`PURE static` for combinational functions. Read current state in Work, write
+pending state, and commit pending state in Xfer; Reset clears both. Do not read
+another module's mutable state concurrently. Queue transfer remains the
+communication mechanism between modules.
+
+A subtree owns its mutable module state. A queue advances on its owner's
+thread, which need not be the producer's or consumer's thread. Xfer code may
+inspect a queue only if that owner's advancement is ordered before the read
+(or the operations are otherwise confined to one sequential subtree). For
+example, Mesh nodes sample parent-owned queue capacity after the parent's
+advancement; reading a sibling-owned queue during parallel Xfer is unsafe.

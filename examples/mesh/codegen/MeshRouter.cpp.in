@@ -1,0 +1,92 @@
+#include "$name.h"
+#include "generated/MeshDimensions.h"
+
+namespace mesh_example {
+
+${name}::$name(int id,
+$parameters)
+    : SimModule("node_" + std::to_string(id)),
+$bindings,
+      id_(id)
+{
+    GFSIM_ASSERT(id >= 0 && id < kNodes);
+    GFSIM_ASSERT(localIn_ && localOut_);
+    GFSIM_ASSERT((westIn_ != nullptr) == (westOut_ != nullptr));
+    GFSIM_ASSERT((eastIn_ != nullptr) == (eastOut_ != nullptr));
+    GFSIM_ASSERT((northIn_ != nullptr) == (northOut_ != nullptr));
+    GFSIM_ASSERT((southIn_ != nullptr) == (southOut_ != nullptr));
+}
+
+void ${name}::Build()
+{
+    SetObjectCapacity(0);
+    BuildInnerQueues();
+    BuildChildren();
+}
+
+Direction ${name}::Route(int node, int destination)
+{
+    if (node % kColumns < destination % kColumns) return Direction::East;
+    if (node % kColumns > destination % kColumns) return Direction::West;
+    if (node < destination) return Direction::South;
+    if (node > destination) return Direction::North;
+    return Direction::Local;
+}
+
+Direction ${name}::Grant(Direction output, Direction last,
+$requests)
+{
+    // Prefer the first requesting input after the previous winner, then wrap.
+$after_last
+$after_wrap
+    return Direction::None;
+}
+
+void ${name}::Work()
+{
+    // Snapshot each input head before committing any grant.
+$read_inputs
+
+$output_blocks
+    WorkChildren();
+}
+
+void ${name}::LogTransfer(int packetId, const std::string& output)
+{
+    if (auto* trace = Trace()) {
+        const auto cycle = GetSim()->Cycles();
+        trace->AddDuration(Path(), "forward", cycle - 1, cycle, output);
+    }
+    if (Log().Level() == gfsim::LogLevel::Debug) {
+        Log().Debug(Name(), "forward") << "packet=" << packetId << " to " << output;
+    }
+}
+
+void ${name}::SampleCapacity()
+{
+$samples
+}
+
+void ${name}::Xfer()
+{
+    SampleCapacity();
+    AdvanceInnerQueues();
+    XferChildren();
+}
+
+void ${name}::Reset()
+{
+$reset
+    SampleCapacity();
+    forwarded_ = 0;
+    ResetInnerQueues();
+    ResetChildren();
+}
+
+void ${name}::ReportStat()
+{
+    Report().ReportVal(Name() + " inter-node hops", forwarded_);
+    ReportChildren();
+}
+
+} // namespace mesh_example

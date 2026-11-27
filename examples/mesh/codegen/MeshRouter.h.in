@@ -1,0 +1,32 @@
+#pragma once
+
+#include "SimModule.h"
+#include "MeshPacket.h"
+
+namespace mesh_example {
+
+class $name final : public gfsim::SimModule {
+public:
+    $name(int id,
+$parameters);
+
+    void Build() override;
+    void Work() override;
+    void Xfer() override;
+    void Reset() override;
+    void ReportStat() override;
+
+private:
+    PURE static Direction Route(int node, int destination);
+    PURE static Direction Grant(Direction output, Direction last,
+$requests);
+    void SampleCapacity();
+    void LogTransfer(int packetId, const std::string& output);
+
+$members
+
+    int id_;
+    std::uint64_t forwarded_ = 0;
+};
+
+} // namespace mesh_example

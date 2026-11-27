@@ -24,6 +24,7 @@ void MyModule::ReportStat()
     report.ReportTitle("MyModule Stats");
     report.ReportVal("Accepted requests", accepted_);
     report.ReportValAndPct("Blocked cycles", blockedCycles_, workCycles_);
+    ReportChildren();
 }
 ```
 

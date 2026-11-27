@@ -1,8 +1,10 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -18,6 +20,7 @@ namespace gfsim {
 
 class SimSystem;
 class SimModule;
+class SimExecutor;
 
 // Common interface for every queue and module in a simulation.
 class SimObj {
@@ -97,6 +100,16 @@ public:
 // Run all Work phases before publishing state through Xfer.
 class SimSystem {
 public:
+    SimSystem();
+    ~SimSystem();
+    SimSystem(const SimSystem&) = delete;
+    SimSystem& operator=(const SimSystem&) = delete;
+    SimSystem(SimSystem&&) = delete;
+    SimSystem& operator=(SimSystem&&) = delete;
+
+    // Configure before Build starts. A split is opt-in even with one worker.
+    void SetWorkerCount(std::size_t count);
+    void SetParallelChildren(SimModule* parent);
     void AddModule(std::shared_ptr<SimObj> module);
     void Build();
     void Step();
@@ -128,6 +141,8 @@ public:
 private:
     friend class SimModule;
     void RegisterTraceQueue(TraceableQueue& queue, const std::string& path);
+    bool ExecuteChildren(SimModule* parent, bool work);
+    void PublishTermination();
 
     std::uint64_t cycles_ = 0;
     std::uint64_t deadlockThreshold_ = 0;
@@ -136,8 +151,16 @@ private:
     bool buildAttempted_ = false;
     bool terminated_ = false;
     bool deadlocked_ = false;
-    bool progressThisStep_ = false;
+    std::atomic<bool> progressThisStep_{false};
     bool stepping_ = false;
+    bool failed_ = false;
+    std::size_t workerCount_ = 1;
+    SimModule* parallelParent_ = nullptr;
+    std::mutex terminationMutex_;
+    bool pendingTermination_ = false;
+    unsigned pendingPhase_ = 0;
+    std::size_t pendingTask_ = 0;
+    std::string pendingReason_;
     std::string terminationReason_;
     Reporter reporter_;
     Logger logger_;
@@ -149,6 +172,7 @@ private:
     std::vector<TraceQueueRegistration> traceQueues_;
     std::unique_ptr<SimTrace> trace_;
     std::vector<std::shared_ptr<SimObj>> modules_;
+    std::unique_ptr<SimExecutor> executor_;
 };
 
 // Short name for the simulation system.

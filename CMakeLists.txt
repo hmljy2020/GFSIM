@@ -4,15 +4,59 @@ project(GFSIM LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+find_package(Threads REQUIRED)
 
 add_library(gfsim STATIC src/Reporter.cpp src/Logger.cpp src/SimSystem.cpp
                          src/SimAssert.cpp src/SimMemory.cpp src/SimTestbench.cpp
-                         src/SimTrace.cpp src/SimGraph.cpp)
+                         src/SimTrace.cpp src/SimGraph.cpp src/SimModule.cpp
+                         src/SimExecutor.cpp)
+target_link_libraries(gfsim PUBLIC Threads::Threads)
 target_include_directories(gfsim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(gfsim PUBLIC cxx_std_11)
 
+add_library(counter_example_model STATIC examples/counter/CounterSystem.cpp
+            examples/counter/Counter.cpp examples/counter/Client.cpp)
+target_link_libraries(counter_example_model PUBLIC gfsim)
+target_include_directories(counter_example_model PUBLIC examples/counter)
+add_executable(counter_example examples/counter/main.cpp)
+target_link_libraries(counter_example PRIVATE counter_example_model)
+
+add_library(mesh_example_model STATIC examples/mesh/MeshBench.cpp
+            examples/mesh/MeshNode.cpp)
+target_link_libraries(mesh_example_model PUBLIC gfsim)
+target_include_directories(mesh_example_model PUBLIC examples/mesh)
+add_executable(mesh_example examples/mesh/main.cpp)
+target_link_libraries(mesh_example PRIVATE mesh_example_model)
+
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(parallel_subtree_test tests/parallel/test_parallel.cpp
+                   tests/parallel/ProbeModule.cpp tests/parallel/RingStage.cpp)
+    target_include_directories(parallel_subtree_test PRIVATE src)
+    target_link_libraries(parallel_subtree_test PRIVATE gfsim)
+    add_test(NAME parallel_subtree COMMAND parallel_subtree_test
+             ${CMAKE_CURRENT_BINARY_DIR}/parallel-phases.json
+             ${CMAKE_CURRENT_BINARY_DIR}/parallel-ring.json
+             ${CMAKE_CURRENT_BINARY_DIR}/parallel-ring.dot)
+    set_tests_properties(parallel_subtree PROPERTIES TIMEOUT 60)
+    find_program(MESH_PYTHON3 python3)
+    if(MESH_PYTHON3)
+        add_test(NAME parallel_trace_json COMMAND ${MESH_PYTHON3}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/parallel/check_trace.py
+                 ${CMAKE_CURRENT_BINARY_DIR}/parallel-phases.json
+                 ${CMAKE_CURRENT_BINARY_DIR}/parallel-ring.json)
+        set_tests_properties(parallel_trace_json PROPERTIES DEPENDS parallel_subtree)
+        add_test(NAME mesh_codegen COMMAND ${MESH_PYTHON3}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/examples/mesh/generate_mesh.py --check)
+    endif()
+    add_executable(mesh_example_test tests/examples/test_mesh.cpp)
+    target_link_libraries(mesh_example_test PRIVATE mesh_example_model)
+    add_test(NAME mesh_example COMMAND mesh_example_test ${CMAKE_CURRENT_BINARY_DIR}/mesh.dot)
+
+    add_executable(counter_exchange_test tests/examples/test_counter_exchange.cpp)
+    target_link_libraries(counter_exchange_test PRIVATE counter_example_model)
+    add_test(NAME counter_exchange COMMAND counter_exchange_test)
+
     add_executable(simobj_simsys_test tests/simobj/test_simobj_simsys.cpp)
     target_link_libraries(simobj_simsys_test PRIVATE gfsim)
     add_test(NAME simobj_simsys COMMAND simobj_simsys_test)

@@ -27,3 +27,18 @@ ctest --test-dir build --output-on-failure
 ```
 
 The library target is `gfsim`. Applications link to it and include headers from `include/`.
+
+For a runnable request/reply example, see [the counter exchange](examples/counter/CounterSystem.md).
+Build and run `counter_example` to watch a client send two additions and verify the counter's replies cycle by cycle.
+
+The [single-threaded mesh example](examples/mesh/MeshBench.md) routes 1,560 packets
+between 40 nodes on an 8×5 grid. Run `./build/mesh_example` for the cycle and hop
+counts, or `./build/mesh_example --timings build/mesh-timings.tsv` for the per-packet baseline.
+
+To execute independent child subtrees on persistent workers, call
+`system.SetWorkerCount(4)` and `system.SetParallelChildren(parent)` before
+`Build()`. Work and Xfer each end with a barrier; the selected parent's own
+logic and queues stay on the main thread. See the [parallel execution
+contract](docs/API/SimSys.md#parallel-child-subtrees) and
+[queue access restrictions](docs/API/SimQueue.md#parallel-access-contract).
+CTest compares the Mesh's serial baseline against 1, 2, and 4 workers every cycle.

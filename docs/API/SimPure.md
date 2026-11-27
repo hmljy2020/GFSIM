@@ -16,6 +16,12 @@ PURE static int Double(int value) { return value * 2; }
 
 void Work() override
 {
+    Transfer();
+    WorkChildren(); // Local blocking must not skip child evaluation.
+}
+
+void Transfer()
+{
     if (input_->Empty() || output_->Full()) return;
     const int result = Double(input_->Peek());
     output_->Write(result);

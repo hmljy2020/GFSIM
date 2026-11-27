@@ -30,3 +30,12 @@ The [trace test](../../tests/trace/test_simtrace.cpp) contains a complete parent
 `SimTrace::AddDuration(modulePath, name, startCycle, endCycle, detail)` emits a complete slice (`ph: "X"`). `AddFlow(fromModule, toModule, startCycle, endCycle, name)` emits paired dependency arrows (`ph: "s"` and `ph: "f"`). Module lanes are created when first used. Concrete modules access the optional trace through the protected `SimModule::Trace()` helper.
 
 The trace test also covers custom payloads, counters, slices, flows, JSON escaping, and sampling.
+
+`AddDuration()` and `AddFlow()` serialize lane creation, flow IDs, and complete
+event output with one mutex. Both halves of a flow share the same lock. Event
+ordering and first-use lane numbers may vary with worker scheduling; paths,
+cycle timestamps, and flow pairings remain meaningful. Internal emission
+helpers reuse the caller's lock. Queue registration/capture, `Closed()`, close,
+and trace configuration belong to the idle control thread. Main-thread capture
+after the Xfer barrier safely observes every queue owner. Do not share a trace
+stream with a separate concurrent writer.

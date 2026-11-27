@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -66,6 +67,7 @@ private:
               const std::string& stage, const std::string& message);
 
     std::ostream* output_; // non-owning
+    std::mutex emitMutex_;
     LogLevel level_ = LogLevel::Warn;
     std::uint64_t cycle_ = 0;
 };

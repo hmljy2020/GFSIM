@@ -19,13 +19,15 @@ public:
     // Optional INPUT and OUTPUT SimQueue<T>* fields belong here.
     // Arithmetic/enum T travels by value; class/struct T travels by shared_ptr<T>.
     // Bind them with BindInput/BindOutput in the constructor.
+    // For optional ports use p ? BindInput(p) : nullptr (and BindOutput).
+    // GFIR functions become ordinary method calls, not extra modules or queues.
     // Optional child modules and INNER queues are owned through
     // AddSubmodule/AddInnerQueue in Build().
 
 private:
     struct State {
         std::uint64_t workCycles = 0;
-    } state_;
+    } state_, nextState_;
 
     PURE static std::uint64_t NextCount(std::uint64_t prior) { return prior + 1; }
     void UpdateState();

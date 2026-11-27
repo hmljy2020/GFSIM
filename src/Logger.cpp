@@ -68,6 +68,7 @@ Logger::Line Logger::Error(std::string unit, std::string stage)
 void Logger::Emit(LogLevel level, const std::string& unit,
                   const std::string& stage, const std::string& message)
 {
+    std::lock_guard<std::mutex> lock(emitMutex_);
     *output_ << "[C:" << cycle_ << "][" << unit << '.' << stage << "]["
              << LevelName(level) << "] " << message << '\n';
 }
