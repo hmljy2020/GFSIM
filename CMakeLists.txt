@@ -31,7 +31,35 @@ add_executable(mesh_heavy_benchmark examples/mesh/heavy_benchmark.cpp)
 target_link_libraries(mesh_heavy_benchmark PRIVATE mesh_example_model)
 
 include(CTest)
+add_library(method_example_model STATIC examples/methods/MethodTarget.cpp
+            examples/methods/MethodCaller.cpp examples/methods/MethodBench.cpp)
+target_link_libraries(method_example_model PUBLIC gfsim)
+target_include_directories(method_example_model PUBLIC examples/methods)
+add_executable(method_example examples/methods/main.cpp)
+target_link_libraries(method_example PRIVATE method_example_model)
+
 if(BUILD_TESTING)
+    add_executable(bind_module_test tests/methods/test_bind_module.cpp
+                   tests/methods/ReferenceNode.cpp)
+    target_include_directories(bind_module_test PRIVATE src)
+    target_link_libraries(bind_module_test PRIVATE gfsim)
+    add_test(NAME bind_module COMMAND bind_module_test ${CMAKE_CURRENT_BINARY_DIR}/module-references.dot)
+    add_executable(method_interaction_test tests/methods/test_methods.cpp)
+    target_include_directories(method_interaction_test PRIVATE src)
+    target_link_libraries(method_interaction_test PRIVATE method_example_model)
+    add_test(NAME method_interaction COMMAND method_interaction_test ${CMAKE_CURRENT_BINARY_DIR}/methods.dot)
+    add_test(NAME method_example COMMAND method_example 4 ${CMAKE_CURRENT_BINARY_DIR}/method-example.dot)
+    set_tests_properties(bind_module method_interaction method_example PROPERTIES TIMEOUT 60)
+    find_program(GFSIM_DOT dot)
+    if(GFSIM_DOT)
+        add_test(NAME method_graph_render COMMAND ${GFSIM_DOT} -Tsvg
+                 ${CMAKE_CURRENT_BINARY_DIR}/methods.dot -o ${CMAKE_CURRENT_BINARY_DIR}/methods.svg)
+        set_tests_properties(method_graph_render PROPERTIES DEPENDS method_interaction)
+        add_test(NAME module_references_render COMMAND ${GFSIM_DOT} -Tsvg
+                 ${CMAKE_CURRENT_BINARY_DIR}/module-references.dot
+                 -o ${CMAKE_CURRENT_BINARY_DIR}/module-references.svg)
+        set_tests_properties(module_references_render PROPERTIES DEPENDS bind_module)
+    endif()
     add_executable(parallel_subtree_test tests/parallel/test_parallel.cpp
                    tests/parallel/ProbeModule.cpp tests/parallel/RingStage.cpp)
     target_include_directories(parallel_subtree_test PRIVATE src)
@@ -84,17 +112,27 @@ if(BUILD_TESTING)
 
     set(MODULE_NAME TemplateSmoke)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
-    configure_file(templates/SimModule.h.in
-                   ${CMAKE_CURRENT_BINARY_DIR}/generated/TemplateSmoke.h @ONLY)
-    configure_file(templates/SimModule.cpp.in
-                   ${CMAKE_CURRENT_BINARY_DIR}/generated/TemplateSmoke.cpp @ONLY)
+    foreach(extension h cpp md)
+        configure_file(templates/SimModule.${extension}.in
+                       ${CMAKE_CURRENT_BINARY_DIR}/generated/${MODULE_NAME}.${extension} @ONLY)
+    endforeach()
+    add_library(template_model STATIC
+                ${CMAKE_CURRENT_BINARY_DIR}/generated/TemplateSmoke.cpp)
+    target_include_directories(template_model PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    target_link_libraries(template_model PUBLIC gfsim)
     add_executable(template_smoke_test
-                   tests/templates/template_smoke.cpp
-                   ${CMAKE_CURRENT_BINARY_DIR}/generated/TemplateSmoke.cpp)
-    target_include_directories(template_smoke_test PRIVATE
-                               ${CMAKE_CURRENT_BINARY_DIR}/generated)
-    target_link_libraries(template_smoke_test PRIVATE gfsim)
+                   tests/templates/template_smoke.cpp)
+    target_link_libraries(template_smoke_test PRIVATE template_model)
     add_test(NAME template_smoke COMMAND template_smoke_test)
+
+    add_executable(simstate_test tests/state/test_state.cpp
+                   tests/state/StateOwner.cpp tests/state/StateAccess.cpp)
+    target_link_libraries(simstate_test PRIVATE gfsim)
+    add_test(NAME simstate COMMAND simstate_test ${CMAKE_CURRENT_BINARY_DIR}/simstate.dot)
+    set_tests_properties(simstate PROPERTIES TIMEOUT 60)
+    add_executable(state_api_example tests/state/state_api_example.cpp)
+    target_link_libraries(state_api_example PRIVATE gfsim)
+    add_test(NAME state_api_example COMMAND state_api_example)
 
     add_executable(three_stage_pipeline_test
                    tests/pipeline/test_three_stage_pipeline.cpp)

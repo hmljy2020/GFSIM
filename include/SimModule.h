@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include "SimQueue.h"
@@ -71,6 +72,24 @@ public:
     void ReportStat() override = 0;
 
 protected:
+    // Records topology only. Ordinary methods still execute on the caller thread.
+    template <typename T>
+    T* BindModule(T* target)
+    {
+        static_assert(std::is_base_of<SimModule, T>::value,
+                      "module targets must derive from SimModule");
+        if (ObjectsFrozen()) {
+            throw std::logic_error("module bindings are frozen after Build");
+        }
+        const SimModule* module = target;
+        if (module == nullptr ||
+            std::find(moduleTargets_.begin(), moduleTargets_.end(), module) != moduleTargets_.end()) {
+            throw std::invalid_argument("module target must be unique and non-null");
+        }
+        moduleTargets_.push_back(module);
+        return target;
+    }
+
     void BuildChildren()
     {
         for (const auto& child : submodules_) {
@@ -195,6 +214,7 @@ private:
     std::vector<const SimObj*> inputs_;
     std::vector<const SimObj*> outputs_;
     std::vector<const SimObj*> innerQueuePorts_;
+    std::vector<const SimModule*> moduleTargets_; // non-owning, in binding order
 };
 
 } // namespace gfsim

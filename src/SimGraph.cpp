@@ -156,6 +156,10 @@ void SimSystem::WriteDot(std::ostream& output) const
             output << "  m" << entry.id << " -> q" << queueIds.at(queue)
                    << " [label=\"output\"];\n";
         }
+        for (const SimModule* target : module->moduleTargets_) {
+            output << "  m" << entry.id << " -> m" << moduleIds.at(target)
+                   << " [style=dashed, label=\"method\"];\n";
+        }
     }
     output << "}\n";
     if (!output) {

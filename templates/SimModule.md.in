@@ -20,6 +20,32 @@ List child modules, owned `INNER` queues, and the data flow between them. State 
 
 ## State and cycle behavior
 
+List any typed non-owning module references, their target owners, and method
+contracts. Initialize references with BindModule(target) in the constructor or
+Build; use target ? BindModule(target) : nullptr for optional absence. Const
+targets are supported. References count neither as objects nor as queue ports.
+Null/duplicate bindings are rejected; after Build bindings are frozen. Targets
+must be registered in this system, though cross-root, cross-hierarchy, self, and
+cyclic references are legal. Keep pointers alive and fixed after Build. DOT
+renders one dashed caller-to-target edge labeled method per binding, without
+port/method names or runtime invocation counts.
+
+The default module embeds `SimState<std::uint64_t> count_`, named
+`@MODULE_NAME@.count`, initialized to zero. Include the public `SimState.h`;
+no companion State class generation is needed. `count_` records Work calls since
+reset. `NextCount(prior)` is a `PURE static` increment. `UpdateState()` stages the
+new count and returns it for the `work_cycles=N` debug log; reads still return
+the old count until Xfer. ReportStat reports the committed count as `Work cycles`.
+Bookkeeping alone does not call MarkProgress or request termination. The smoke
+test steps it explicitly and verifies no-progress deadlock at two cycles.
+
+Explicitly call each embedded state's Build, Xfer, Reset, and ReportStat as in
+the code template; skip its empty Work. States are not objects in the owner's
+topology count and are not child modules, queues, DOT nodes, or worker tasks.
+They have no automatic Parent/GetSim context and are not frozen or checked by
+system traversal. Multiple states and fixed state arrays are allowed: name and
+advance each element separately. Owner Xfer visits N instances in O(N), each checking its own bool.
+
 List private state fields and their reset values. Describe the blocking checks before input consumption, local helper methods, `Work()` behavior, and `Xfer()` bookkeeping. Define the exact event that calls `MarkProgress()`, the completion condition that calls `RequestTerminate()`, and the chosen deadlock threshold.
 
 List every `PURE` method, its explicit inputs and output, and why it is independent of module state. State the complete transaction readiness condition and the commit order: peek, compute, write outputs, then pop inputs. Explain blocked-cycle behavior.
@@ -47,7 +73,8 @@ Keep ordinary functions as ordinary calls; do not create queue ports for functio
 arguments. Generate only actual optional ports and bind non-null endpoints in the
 constructor. `PURE static` functions receive explicit const inputs and return
 results without queue access. Evaluate current state into pending state in
-`Work()` and commit it in `Xfer()`; reset both. A blocked local helper returns to
+`Work()` and commit it in `Xfer()`; Reset restores current and clears written
+flags, without needing to clear pending storage. A blocked local helper returns to
 `Work()`, which must still call `WorkChildren()` exactly once. Keep all five
 lifecycle methods and the child/queue helper positions shown in the code template.
 
@@ -58,3 +85,17 @@ owner helper skips delegated queues. Xfer commits private state and must not
 query queues or another module's state; perform readiness checks in Work.
 Describe payload ownership after handoff and obey the restricted parallel queue
 API in `docs/API/SimQueue.md`. No runtime port or hierarchy changes are allowed.
+
+Embedded state current values stay read-only during Work. Different workers may
+write different SimState instances through ordinary pointers or methods on a
+BindModule target; the model must prevent concurrent writes to one instance,
+including members of a struct value. Sequential writes to one instance use the
+last value, and unwritten fields hold their value.
+Each state commits once on its owner's thread after all Work completes. Other
+tasks must not access it during Xfer. The existing two phase barriers suffice;
+there is no state reference-binding API. Module binding only records topology:
+methods execute synchronously on the caller's thread when explicitly called,
+never automatically from target Work. Use methods for cross-module state access
+only during Work, not Xfer. There is no dispatcher, new task, thread switch,
+runtime phase guard, conflict detection, or arbitration. Binding changes neither
+worker placement nor queue endpoints/access rules.

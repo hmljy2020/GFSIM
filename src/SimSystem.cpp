@@ -139,9 +139,13 @@ void SimSystem::Build()
     };
     std::unordered_map<const SimObj*, QueueUse> queues;
     std::vector<SimObj*> queueOrder;
+    std::vector<const SimModule*> moduleOrder;
+    std::unordered_set<const SimModule*> moduleSet;
     bool foundParallelParent = false;
     std::function<void(const SimModule*)> collect;
     collect = [&](const SimModule* parent) {
+        moduleOrder.push_back(parent);
+        moduleSet.insert(parent);
         if (parent == parallelParent_) foundParallelParent = true;
         for (const auto& queue : parent->innerQueues_) {
             ++queues[queue.get()].owners;
@@ -162,6 +166,16 @@ void SimSystem::Build()
     for (const auto& root : modules_) {
         if (const auto* parent = dynamic_cast<const SimModule*>(root.get())) {
             collect(parent);
+        }
+    }
+    // Check references only after every root and descendant has been collected.
+    // Following references here would recurse through legal self/cyclic bindings.
+    for (const SimModule* caller : moduleOrder) {
+        for (const SimModule* target : caller->moduleTargets_) {
+            if (moduleSet.count(target) == 0) {
+                throw std::logic_error("module binding from " + caller->Path() +
+                                       " targets a module outside this system");
+            }
         }
     }
     std::function<void(const SimObj*)> collectPhysicalQueues;

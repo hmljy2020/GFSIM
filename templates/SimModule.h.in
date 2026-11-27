@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "SimModule.h"
+#include "SimState.h"
 
 namespace gfsim {
 
@@ -21,16 +22,17 @@ public:
     // Bind them with BindInput/BindOutput in the constructor.
     // For optional ports use p ? BindInput(p) : nullptr (and BindOutput).
     // GFIR functions become ordinary method calls, not extra modules or queues.
+    // For module calls, keep a typed non-owning target pointer and initialize
+    // it with BindModule(target), or target ? BindModule(target) : nullptr.
+    // Const targets are supported. References add no object capacity.
     // Optional child modules and INNER queues are owned through
     // AddSubmodule/AddInnerQueue in Build().
 
 private:
-    struct State {
-        std::uint64_t workCycles = 0;
-    } state_, nextState_;
+    SimState<std::uint64_t> count_; // embedded; not part of Objects() or Submodules()
 
     PURE static std::uint64_t NextCount(std::uint64_t prior) { return prior + 1; }
-    void UpdateState();
+    std::uint64_t UpdateState();
 };
 
 } // namespace gfsim

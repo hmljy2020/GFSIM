@@ -8,6 +8,8 @@ Graph Flow Simulator is a C++11 platform for cycle-based, queue-wired models.
 - `SimQueue<T>` carries small arithmetic/enum values directly and class/struct messages as `std::shared_ptr<T>`, with staged writes, visible reads, capacity up to 512, latency, and stall control.
 - `RID` and `SimQueue::FlushIf()` remove selected packets from both queue phases while preserving staged delay alignment.
 - `SimModule` owns nested modules and internal queues while exposing optional typed input and output ports.
+- `SimModule::BindModule(target)` records typed non-owning module references for build validation and dashed DOT method edges. Ordinary methods run synchronously on the caller's thread; state writes commit at the owner's Xfer.
+- Header-only [SimState<T>](docs/API/SimState.md) provides field-level current/pending values, explicit reset values, and owner-managed Xfer commits without topology registration.
 - `PURE` marks stateless combinational helpers; modules peek, compute, write outputs, then consume inputs only when the whole queue transaction can fire.
 - `Reporter` formats counters; `Logger` emits cycle-aware diagnostic lines.
 - `SimMemory` maps guest addresses and loads ELF images; `SimTestbench` drives and checks models; `GFSIM_ASSERT` reports invariant failures.
@@ -30,6 +32,11 @@ The library target is `gfsim`. Applications link to it and include headers from 
 
 For a runnable request/reply example, see [the counter exchange](examples/counter/CounterSystem.md).
 Build and run `counter_example` to watch a client send two additions and verify the counter's replies cycle by cycle.
+
+For module methods and shared state, see the [method example](examples/methods/MethodBench.md).
+Run `./build/method_example 4 build/methods.dot` to check two callers updating
+different fields on one target, then render the exported references with Graphviz.
+Use `0`, `1`, `2`, or `4` for serial or requested worker count.
 
 The [single-threaded mesh example](examples/mesh/MeshBench.md) routes 1,560 packets
 between 40 nodes on an 8×5 grid. Run `./build/mesh_example` for the cycle and hop

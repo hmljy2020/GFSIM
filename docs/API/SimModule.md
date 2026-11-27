@@ -2,7 +2,7 @@
 
 Header: `include/SimModule.h`. Namespace: `gfsim`. Requires C++11.
 
-`SimModule` is an abstract `SimObj` with optional typed ports, a non-owning parent link, owned child modules, and owned internal queues. A concrete module can have **zero or more** inputs and **zero or more** outputs. Start from [`templates/SimModule.h.in`](../../templates/SimModule.h.in), [`templates/SimModule.cpp.in`](../../templates/SimModule.cpp.in), and [`templates/SimModule.md.in`](../../templates/SimModule.md.in), then add only the ports, private state, and helper methods needed. The code template compiles as a zero-port module after replacing `@MODULE_NAME@`.
+`SimModule` is an abstract `SimObj` with optional typed ports, a non-owning parent link, owned child modules, and owned internal queues. A concrete module can have **zero or more** inputs and **zero or more** outputs. Start from [`templates/SimModule.h.in`](../../templates/SimModule.h.in), [`templates/SimModule.cpp.in`](../../templates/SimModule.cpp.in), and [`templates/SimModule.md.in`](../../templates/SimModule.md.in), then add only the ports, private state, and helper methods needed. Configure `@MODULE_NAME@` and compile the generated module implementation; its [SimState counter](SimState.md) uses the public header directly.
 
 ## Unified lifecycle
 
@@ -31,6 +31,7 @@ Mark stateless combinational helpers with `PURE` and commit queue transfers atom
 | `GetSim()` / `Path()` | Return the system and the module's hierarchical name. |
 | `BindInput(SimQueue<T>*)` | Bind one non-owning input; omit when the module has no inputs. |
 | `BindOutput(SimQueue<T>*)` | Bind one non-owning output; omit when the module has no outputs. |
+| `BindModule(T*)` | Protected template: register a non-owning module target and return the same typed pointer, including constness. |
 | `AddInnerQueue(std::shared_ptr<SimQueue<T>>)` | Own an internal queue and return a pointer for child ports. |
 | `Log()` / `Report()` | Access the system logger and reporter; require an attached system. |
 | `Trace()` | Return the optional trace writer for module slices and flows. |
@@ -44,6 +45,88 @@ Register root modules with `SimSystem` before build. Physical queues must be own
 See [`tests/simmodule/test_simmodule.cpp`](../../tests/simmodule/test_simmodule.cpp) for a parent with two children and distinct output types, and [decision 0002](../decisions/0002-simmodule-template.md) for the ownership contract.
 
 After `Build()`, `SimSystem::WriteDot()` renders the module hierarchy and bound queues; see the [DOT graph API](SimGraph.md).
+
+## Module references and ordinary methods
+
+Initialize a typed member in the constructor with `target_(BindModule(target))`,
+as in [MethodCaller](../../examples/methods/MethodCaller.cpp). T must derive from
+SimModule. A `const Server*` target stays const; a `Server*` stays mutable. For an
+optional reference use `target ? BindModule(target) : nullptr`. No marker macro
+is required. References do not enter Objects, Submodules, queue collections, or
+object capacity and never acquire ownership of the target.
+
+Bindings may be declared during construction or Build. Null or duplicate targets
+on one caller throw `std::invalid_argument` (including rebinding the same object
+through a const pointer). After topology freeze, binding throws `std::logic_error`,
+including after Reset. Once all modules have built, the system collects the
+complete module set and rejects any target outside it with `std::logic_error`.
+Claiming a GetSim context without registration does not establish membership.
+Unregistered targets and targets registered only in another system are invalid.
+Cross-hierarchy, cross-root, self, and mutually cyclic references in one system
+are allowed. Explicit Build-time wiring supports cycles; references are never
+followed by recursive Build or lifecycle traversal.
+
+The model guarantees pointer lifetime and keeps its bound member pointer fixed
+after Build. Validation checks registration, not C++ lifetime. The framework does
+not intercept pointer assignments or method calls.
+
+Methods are ordinary explicit synchronous C++ calls on the **caller's thread**.
+The target's Work does not automatically invoke them. During Work, methods may
+query current state, stage SimState writes, and perform legal queue operations.
+Only the owner commits a state during Xfer. Different workers may write different
+instances; the model must prevent concurrent writes to one instance, including
+different members of a struct value. Mutable diagnostics in methods need the
+same discipline. Cross-module state interaction belongs in Work, never Xfer.
+
+Both phase barriers and existing task assignment remain unchanged. Binding adds
+no dispatch table, thread switch, task, lock, arbitration, conflict detector,
+runtime phase check, or automatic method tracing. It does not replace queue
+BindInput/BindOutput or relax queue readiness and parallel access rules.
+
+DOT adds one dashed caller-to-target edge labeled `method` for each binding.
+It records neither reference-port names nor individual method names or runtime
+call counts. See [Graph API](SimGraph.md) and [decision 0017](../decisions/0017-module-method-bindings.md).
+
+This executable example uses the supplied two-state model. Link
+`method_example_model` (which links gfsim) and include `examples/methods`:
+
+```cpp
+#include "MethodBench.h"
+
+int main()
+{
+    gfsim::SimSystem sim;
+    auto bench = std::make_shared<method_example::MethodBench>(&sim);
+    sim.AddModule(bench);
+    sim.SetWorkerCount(4);
+    sim.SetParallelChildren(bench.get());
+    sim.SetDeadlockThreshold(2);
+    sim.Build();
+    sim.Run(8);
+    GFSIM_ASSERT(sim.NeedTerminate() && sim.Cycles() == 7);
+    GFSIM_ASSERT(bench->Target().Read(0) == 16 && bench->Target().Read(1) == 26);
+}
+```
+
+The [example guide](../../examples/methods/MethodBench.md) gives per-cycle values,
+reporting, reset behavior, worker configuration, and DOT rendering commands.
+
+## Embedded SimState fields
+
+The module template embeds a `SimState<std::uint64_t>` counter initialized to
+zero, with inline `Read()` and `Write()` accessors. It stages the increment in
+Work, logs the computed new count, and reports the committed count as `Work cycles`
+after Xfer. Each additional logical field is another SimState instance; no
+concrete State class needs to be generated.
+
+Call each state's Build, Xfer, Reset, and ReportStat explicitly from its owner;
+skip its empty Work. Embedded states do not enter Objects, Submodules, queue
+collections, system roots, DOT, or worker planning. Exclude them from object
+capacity. They do not acquire Parent/GetSim context and are not automatically
+frozen or checked by system traversal. The owner maintains their fixed shape
+and lifetime. Multiple states or fixed arrays are allowed with separately named
+elements and lifecycle calls. See [State API](SimState.md) for field access and
+parallel writer responsibilities.
 
 ## Parallel traversal and generated models
 
@@ -62,9 +145,13 @@ Generated GFIR functions map to ordinary calls, with explicit arguments; they
 do not create boundary ports. Generate only existing ports, allow each output
 its own type, and bind optional non-null endpoints in the constructor. Use
 `PURE static` for combinational functions. Read current state in Work, write
-pending state, and commit pending state in Xfer; Reset clears both. Do not read
-another module's mutable state concurrently. Queue transfer remains the
-communication mechanism between modules.
+pending state, and commit pending state in Xfer. Embedded state Reset restores
+initial current values and clears written flags; pending storage need not be
+cleared. Current fields may be read across modules during Work, and separate
+workers may write separate SimState instances using ordinary non-owning
+pointers. The model must prevent concurrent writes to the same instance, including members of a struct value. Do not
+read another module's mutable state concurrently outside this contract. Packet
+transfer remains through queues.
 
 A subtree owns its mutable module state. Physical queue ownership determines
 lifetime, Reset, and topology; execution assignment is computed from its producer
